@@ -59,7 +59,7 @@ export interface Project {
   redactionRules: RedactionRule[];
   modelPolicy: 'local' | 'external';
   // 项目级模型配置（external 时启用；apiKey 走 env 或外部凭证引用，禁止明文存储）
-  llmConfig?: { baseUrl?: string; model?: string; apiKeyRef?: string };
+  llmConfig?: { baseUrl?: string; model?: string; apiKeyRef?: string; reasoningEffort?: 'none' | 'low' | 'high' | 'max' };
   createdAt: string;
   updatedAt: string;
 }

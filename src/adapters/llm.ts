@@ -93,6 +93,7 @@ export interface RealLLMOptions {
   baseUrl: string;
   apiKey?: string;
   model: string;
+  reasoningEffort?: 'none' | 'low' | 'high' | 'max';
 }
 
 function extractJson(s: string): string {
@@ -117,6 +118,7 @@ export function createOpenAILLMAdapter(opts: RealLLMOptions): LLMAdapter {
       body: JSON.stringify({
         model: opts.model,
         temperature: 0.2,
+        ...(opts.reasoningEffort ? { reasoning_effort: opts.reasoningEffort } : {}),
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: user },
@@ -229,12 +231,19 @@ export function createOpenAILLMAdapter(opts: RealLLMOptions): LLMAdapter {
 // 选择器：项目 modelPolicy=external 且配置了端点（项目级优先，env 兜底）→ 真实适配器；否则 stub
 export function selectLLMAdapter(project: {
   modelPolicy: 'local' | 'external';
-  llmConfig?: { baseUrl?: string; model?: string };
+  llmConfig?: { baseUrl?: string; model?: string; reasoningEffort?: 'none' | 'low' | 'high' | 'max' };
 }): LLMAdapter {
   if (project.modelPolicy === 'external') {
     const baseUrl = project.llmConfig?.baseUrl || config.LLM_BASE_URL;
     const model = project.llmConfig?.model || config.LLM_MODEL || 'gpt-4o-mini';
-    if (baseUrl) return createOpenAILLMAdapter({ baseUrl, apiKey: config.LLM_API_KEY, model });
+    if (baseUrl) {
+      return createOpenAILLMAdapter({
+        baseUrl,
+        apiKey: config.LLM_API_KEY,
+        model,
+        reasoningEffort: project.llmConfig?.reasoningEffort,
+      });
+    }
   }
   return createStubLLMAdapter();
 }

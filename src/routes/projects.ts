@@ -41,6 +41,8 @@ const llmConfigSchema = z.object({
   baseUrl: z.string().url().optional(), // 模型网关地址（OpenAI 兼容）
   model: z.string().optional(),
   apiKeyRef: z.string().optional(), // 只存引用，禁止明文 apiKey
+  // 推理强度（reasoning 模型专用；不传则由网关默认档位决定）
+  reasoningEffort: z.enum(['none', 'low', 'high', 'max']).optional(),
 });
 
 const projectSchema = z.object({

@@ -191,6 +191,14 @@
       <input class="f" id="llmBase" placeholder="http://x.x.x.x:port/v1" />
       <label class="f">模型名</label>
       <input class="f" id="llmModel" placeholder="如 qwen2.5-72b" />
+      <label class="f">推理强度（reasoning 模型）</label>
+      <select class="f" id="llmEffort">
+        <option value="">网关默认</option>
+        <option value="none">none · 最快</option>
+        <option value="low">low</option>
+        <option value="high">high · 推荐</option>
+        <option value="max">max · 最慢最准</option>
+      </select>
       <label class="f">API Key <span class="key-state" id="llmKeyState">未配置</span></label>
       <input class="f" id="llmKey" type="password" autocomplete="new-password" placeholder="sk-…（留空表示不修改）" />
     </div>
@@ -293,6 +301,7 @@
       $('modelPolicy').value = p.modelPolicy || 'local';
       $('llmBase').value = (p.llmConfig && p.llmConfig.baseUrl) || '';
       $('llmModel').value = (p.llmConfig && p.llmConfig.model) || '';
+      $('llmEffort').value = (p.llmConfig && p.llmConfig.reasoningEffort) || '';
       const ls = (p.logSources && p.logSources[0]) || {};
       $('logKind').value = ls.kind || 'platform';
       $('logEndpoint').value = ls.endpoint || ls.path || '';
@@ -323,7 +332,7 @@
     try {
       const body = {
         modelPolicy: val('modelPolicy'),
-        llmConfig: { baseUrl: val('llmBase') || undefined, model: val('llmModel') || undefined },
+        llmConfig: { baseUrl: val('llmBase') || undefined, model: val('llmModel') || undefined, reasoningEffort: val('llmEffort') || undefined },
         logSources: [{ kind: val('logKind'), endpoint: val('logEndpoint') || undefined, supportsTraceId: true, maxReturn: 2000 }],
         codeSources: [{
           type: val('repoType'),
