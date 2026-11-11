@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+.env.local
+*.log
+dev.db
+coverage/
+.DS_Store
+# 运行时数据（含内网地址/本地路径，不入库）
+data/
+# 本地工作记忆
+.workbuddy/

@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Exception Insight · 异常分析</title>
+<style>
+  :root{
+    --bg:#f4f6fb; --surface:#fff; --surface-2:#f8fafc; --border:#e6e9f0;
+    --text:#0f172a; --muted:#64748b; --primary:#4f46e5; --primary-2:#6366f1;
+    --primary-soft:#eef2ff; --success:#16a34a; --danger:#dc2626; --warn:#d97706;
+    --radius:14px; --radius-sm:10px;
+    --shadow-sm:0 1px 2px rgba(15,23,42,.06);
+    --shadow-md:0 6px 20px rgba(15,23,42,.08);
+    --shadow-lg:0 20px 60px rgba(15,23,42,.22);
+    color-scheme: light;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  button{font-family:inherit}
+  .topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:14px;height:60px;padding:0 22px;background:rgba(255,255,255,.82);backdrop-filter:blur(10px);border-bottom:1px solid var(--border)}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:16px;letter-spacing:.2px}
+  .logo{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--primary),var(--primary-2));box-shadow:var(--shadow-sm);display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;font-weight:800}
+  .spacer{flex:1}
+  .userchip{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);background:var(--surface-2);border:1px solid var(--border);padding:6px 12px;border-radius:999px}
+  .userchip .av{width:20px;height:20px;border-radius:50%;background:var(--primary-soft);color:var(--primary);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
+  .btn{border:0;border-radius:10px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;transition:.18s}
+  .btn-ghost{background:var(--surface);border:1px solid var(--border);color:var(--text)}
+  .btn-ghost:hover{background:var(--surface-2)}
+  .btn-primary{background:linear-gradient(135deg,var(--primary),var(--primary-2));color:#fff;box-shadow:0 6px 16px rgba(79,70,229,.28)}
+  .btn-primary:hover{transform:translateY(-1px);box-shadow:0 10px 22px rgba(79,70,229,.34)}
+  .btn:disabled{opacity:.55;cursor:default;transform:none;box-shadow:none}
+  .workspace{max-width:920px;margin:0 auto;padding:34px 22px 80px}
+  .hero h1{font-size:30px;line-height:1.25;margin:0 0 10px;letter-spacing:-.5px}
+  .hero h1 .accent{background:linear-gradient(135deg,var(--primary),var(--primary-2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero p{margin:0 0 24px;color:var(--muted);font-size:14px;line-height:1.7;max-width:640px}
+  .input-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm);padding:16px}
+  textarea#desc{width:100%;border:0;outline:0;resize:vertical;min-height:120px;font-size:14px;line-height:1.7;color:var(--text);background:transparent}
+  textarea#desc::placeholder{color:#9aa4b2}
+  .input-toolbar{display:flex;align-items:center;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+  .upload{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);background:var(--surface-2);border:1px solid var(--border);padding:8px 12px;border-radius:9px;cursor:pointer}
+  .upload:hover{color:var(--text)}
+  .upload input{display:none}
+  .grow{flex:1}
+  .msg{font-size:12.5px;margin-left:6px}
+  .msg.ok{color:var(--success)} .msg.err{color:var(--danger)}
+  #imgPreview{margin-top:12px;max-width:200px;border-radius:10px;border:1px solid var(--border)}
+  .report{margin-top:26px}
+  .rep-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-md);overflow:hidden}
+  .rep-head{padding:22px 24px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,var(--surface),var(--surface-2))}
+  .rep-concl{font-size:19px;font-weight:700;line-height:1.45;margin-bottom:12px}
+  .rep-badges{display:flex;flex-wrap:wrap;gap:8px}
+  .badge{font-size:11.5px;font-weight:600;padding:3px 10px;border-radius:999px;background:var(--surface-2);border:1px solid var(--border);color:var(--muted)}
+  .badge.type{background:var(--primary-soft);border-color:#dcd8ff;color:var(--primary)}
+  .badge.high{background:#dcfce7;border-color:#bbf7d0;color:#15803d}
+  .badge.medium{background:#fef3c7;border-color:#fde68a;color:#a16207}
+  .badge.low{background:#fee2e2;border-color:#fecaca;color:#b91c1c}
+  .badge.partial{background:#fef3c7;border-color:#fde68a;color:#a16207}
+  .badge.done{background:#dcfce7;border-color:#bbf7d0;color:#15803d}
+  .rep-body{padding:8px 24px 24px}
+  .rep-section{padding:16px 0;border-bottom:1px dashed var(--border)}
+  .rep-section:last-child{border-bottom:0}
+  .rep-label{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px}
+  /* 可折叠分区 */
+  .sec-toggle{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
+  .sec-toggle .chev{font-size:10px;color:var(--muted);transition:transform .18s;display:inline-block}
+  .sec-toggle.open .chev{transform:rotate(90deg)}
+  .sec-body{display:none;margin-top:2px}
+  .sec-body.open{display:block}
+  .count-pill{font-size:10.5px;font-weight:700;color:var(--primary);background:var(--primary-soft);border:1px solid #dcd8ff;border-radius:999px;padding:1px 8px;text-transform:none;letter-spacing:0}
+  .more-btn{display:block;width:100%;margin-top:8px;padding:8px;border:1px dashed var(--border);border-radius:8px;background:var(--surface);color:var(--primary);font-size:12.5px;font-weight:600;cursor:pointer}
+  .more-btn:hover{background:var(--primary-soft);border-color:var(--primary-2)}
+  .ev-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+  .ev-list li{background:var(--surface-2);border:1px solid var(--border);border-left:3px solid var(--primary);border-radius:8px;padding:9px 12px;font-size:13px;line-height:1.6}
+  .ev-list li.ev{cursor:pointer;transition:.15s}
+  .ev-list li.ev:hover{border-color:#c7cdf8}
+  .ev-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+  .lv{font-size:10.5px;font-weight:800;padding:1px 7px;border-radius:5px;background:#f1f5f9;color:var(--muted)}
+  .lv.ERROR{background:#fee2e2;color:#b91c1c}
+  .lv.WARN{background:#fef3c7;color:#a16207}
+  .lv.INFO{background:var(--primary-soft);color:var(--primary)}
+  .lv.code,.lv.blame,.lv.data{background:#ecfeff;color:#0e7490}
+  .ev-time{font-size:11px;color:var(--muted);margin-left:auto}
+  .ev-msg{font-size:12.5px;line-height:1.65;word-break:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap}
+  .ev.expanded .ev-msg{display:block;-webkit-line-clamp:unset;overflow:visible}
+  .ev-meta{display:none;font-size:11px;color:var(--muted);margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);word-break:break-all}
+  .ev.expanded .ev-meta{display:block}
+  .ev-src{font-weight:700;color:var(--primary);margin-right:6px}
+  .kv{font-size:13.5px;line-height:1.9}
+  .kv .k{color:var(--muted)}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:1px 6px;font-size:12.5px}
+  .muted{color:var(--muted);font-size:12.5px}
+  .hl{color:var(--danger);font-weight:600}
+  .hl-ok{color:var(--success);font-weight:600}
+  .drawer-mask{position:fixed;inset:0;background:rgba(15,23,42,.32);opacity:0;pointer-events:none;transition:.24s;z-index:40}
+  .drawer-mask.open{opacity:1;pointer-events:auto}
+  .drawer{position:fixed;top:0;right:0;height:100%;width:400px;max-width:92vw;background:var(--surface);border-left:1px solid var(--border);box-shadow:var(--shadow-lg);transform:translateX(100%);transition:transform .28s cubic-bezier(.4,0,.2,1);z-index:50;display:flex;flex-direction:column}
+  .drawer.open{transform:translateX(0)}
+  .drawer-head{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--border)}
+  .drawer-head h2{font-size:16px;margin:0}
+  .x{background:var(--surface-2);border:1px solid var(--border);width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:16px;color:var(--muted);line-height:1}
+  .drawer-body{padding:18px 20px;overflow-y:auto;flex:1}
+  .field-group{border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;margin-bottom:14px;background:var(--surface-2)}
+  .field-group-title{font-size:13px;font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+  .field-group-title .idx{width:20px;height:20px;border-radius:6px;background:var(--primary-soft);color:var(--primary);font-size:11px;display:flex;align-items:center;justify-content:center;font-weight:800}
+  label.f{display:block;font-size:12px;color:var(--muted);margin:8px 0 4px}
+  input.f,select.f{width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--surface);color:var(--text);outline:0;transition:.15s}
+  input.f:focus,select.f:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(79,70,229,.14)}
+  .drawer-foot{padding:16px 20px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px}
+  .drawer-foot .btn-primary{flex:1}
+  .key-state{font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:999px;background:#f1f5f9;color:var(--muted);border:1px solid var(--border);margin-left:4px}
+  .key-state.ok{background:#dcfce7;border-color:#bbf7d0;color:#15803d}
+  .history{margin-top:34px}
+  .history-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .history-head h2{font-size:16px;margin:0}
+  .history-head .muted{font-size:12px}
+  .hist-list{display:flex;flex-direction:column;gap:10px}
+  .hist-item{display:flex;align-items:center;gap:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;transition:.15s}
+  .hist-item:hover{border-color:var(--primary-2);box-shadow:var(--shadow-sm);transform:translateY(-1px)}
+  .hist-ic{width:34px;height:34px;border-radius:9px;background:var(--primary-soft);color:var(--primary);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+  .hist-main{flex:1;min-width:0}
+  .hist-title{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hist-sub{font-size:12px;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hist-meta{font-size:12px;color:var(--muted);flex-shrink:0;text-align:right}
+  .empty{border:1.5px dashed var(--border);border-radius:var(--radius);padding:28px;text-align:center;color:var(--muted);font-size:13px;background:transparent}
+  .modal{position:fixed;inset:0;background:rgba(15,23,42,.4);display:none;align-items:center;justify-content:center;z-index:60}
+  .modal.show{display:flex}
+  .modal-card{background:var(--surface);border-radius:16px;padding:24px;width:340px;box-shadow:var(--shadow-lg)}
+  .modal-card h2{margin:0 0 16px;font-size:17px}
+  .modal-card label.f{font-size:12px}
+  @media(max-width:560px){.hero h1{font-size:24px}.workspace{padding:22px 14px 60px}}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="logo">E</span> Exception Insight</div>
+  <div class="spacer"></div>
+  <div class="userchip" id="userchip"><span class="av">?</span><span id="userText">未登录</span></div>
+  <button class="btn btn-ghost" id="openConfigBtn" onclick="openConfig()">配置</button>
+</header>
+
+<main class="workspace">
+  <section class="hero">
+    <h1>输入报错，<span class="accent">快速定位</span>问题</h1>
+    <p>粘贴报错日志 / 堆栈，或上传报错截图。平台结合日志、代码与数据，输出带可回溯证据的归因报告（代码位置、提交人、数据定位）。</p>
+    <div class="input-card">
+      <textarea id="desc" placeholder="例如：订单详情页白屏，报 NullPointerException at OrderDetailService.java:128"></textarea>
+      <div class="input-toolbar">
+        <label class="upload">上传截图<input type="file" id="img" accept="image/*" onchange="previewImg(event)" /></label>
+        <span class="grow"></span>
+        <span class="msg" id="anaMsg"></span>
+        <button class="btn btn-primary" id="analyzeBtn" onclick="analyze()">分析</button>
+      </div>
+      <img id="imgPreview" class="hidden" style="display:none" alt="截图预览" />
+    </div>
+  </section>
+
+  <section class="report" id="reportSection" style="display:none">
+    <div class="rep-card" id="reportCard"></div>
+  </section>
+
+  <section class="history">
+    <div class="history-head">
+      <h2>最近分析</h2>
+      <span class="muted" id="histCount"></span>
+    </div>
+    <div class="hist-list" id="histList"><div class="empty">暂无分析记录，输入报错信息开始第一次分析</div></div>
+  </section>
+</main>
+
+<div class="drawer-mask" id="drawerMask" onclick="closeConfig()"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="drawer-head">
+    <h2>项目配置</h2>
+    <button class="x" onclick="closeConfig()">×</button>
+  </div>
+  <div class="drawer-body">
+    <div class="field-group">
+      <div class="field-group-title"><span class="idx">1</span> 大模型</div>
+      <label class="f">模式</label>
+      <select class="f" id="modelPolicy">
+        <option value="local">本地 stub（无需模型，先看效果）</option>
+        <option value="external">外部大模型（OpenAI 兼容）</option>
+      </select>
+      <label class="f">模型地址</label>
+      <input class="f" id="llmBase" placeholder="http://x.x.x.x:port/v1" />
+      <label class="f">模型名</label>
+      <input class="f" id="llmModel" placeholder="如 qwen2.5-72b" />
+      <label class="f">API Key <span class="key-state" id="llmKeyState">未配置</span></label>
+      <input class="f" id="llmKey" type="password" autocomplete="new-password" placeholder="sk-…（留空表示不修改）" />
+    </div>
+    <div class="field-group">
+      <div class="field-group-title"><span class="idx">2</span> 日志源</div>
+      <label class="f">类型</label>
+      <select class="f" id="logKind">
+        <option value="platform">日志平台链接</option>
+        <option value="objectstore">目录 / 对象存储</option>
+      </select>
+      <label class="f">地址 / 路径</label>
+      <input class="f" id="logEndpoint" placeholder="日志平台地址 或 目录路径" />
+    </div>
+    <div class="field-group">
+      <div class="field-group-title"><span class="idx">3</span> 代码仓库</div>
+      <label class="f">类型</label>
+      <select class="f" id="repoType">
+        <option value="git">Git 地址</option>
+        <option value="local">本地目录</option>
+      </select>
+      <label class="f">地址 / 目录</label>
+      <input class="f" id="repoUrl" placeholder="Git 地址 或 本地目录路径" />
+      <label class="f">分支</label>
+      <input class="f" id="repoBranch" placeholder="默认 main" />
+      <label class="f">访问 Token <span class="key-state" id="gitTokenState">未配置</span></label>
+      <input class="f" id="gitToken" type="password" autocomplete="new-password" placeholder="GitLab read_api 只读 token（留空表示不修改）" />
+    </div>
+    <p class="muted" style="margin:4px 2px 0">密钥只写入服务端 <span class="mono">.env</span>，不落数据库、不回传明文，保存后立即生效。配置保存到项目 demo-project-1。</p>
+  </div>
+  <div class="drawer-foot">
+    <span class="msg" id="cfgMsg"></span>
+    <button class="btn btn-primary" id="saveBtn" onclick="saveConfig()">保存配置</button>
+  </div>
+</aside>
+
+<div class="modal" id="loginModal">
+  <div class="modal-card">
+    <h2>登录 Exception Insight</h2>
+    <label class="f">工号</label>
+    <input class="f" id="emp" value="1001" />
+    <label class="f">密码</label>
+    <input class="f" id="pwd" type="password" value="dev123" />
+    <div style="margin-top:16px"><button class="btn btn-primary" style="width:100%" onclick="login()">登录</button></div>
+    <div class="msg err" id="loginMsg" style="margin-top:10px"></div>
+  </div>
+</div>
+
+<script>
+  const PROJECT = 'demo-project-1';
+  let token = null;
+  let imgData = null;
+
+  function $(id) { return document.getElementById(id); }
+  function val(id) { return ($(id).value || '').trim(); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
+  function setMsg(id, text, ok) { const el = $(id); el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'err'); }
+  function setUser(text) { $('userText').textContent = text; $('userchip').querySelector('.av').textContent = (text || '?').slice(0, 1); }
+
+  async function api(path, opts) {
+    opts = opts || {};
+    opts.headers = Object.assign({}, opts.headers || {});
+    if (token) opts.headers.authorization = 'Bearer ' + token;
+    if (opts.body && !opts.headers['content-type']) opts.headers['content-type'] = 'application/json';
+    const res = await fetch(path, opts);
+    const text = await res.text();
+    let data; try { data = JSON.parse(text); } catch (e) { data = text; }
+    if (!res.ok) throw new Error((data && data.error && data.error.message) || ('HTTP ' + res.status));
+    return data;
+  }
+
+  async function login() {
+    try {
+      const r = await api('/auth/login', { method: 'POST', body: JSON.stringify({ employeeId: val('emp'), password: val('pwd') }) });
+      token = r.token;
+      setUser(r.user.name);
+      $('loginModal').classList.remove('show');
+      $('openConfigBtn').disabled = false;
+    } catch (e) {
+      setMsg('loginMsg', e.message, false);
+      $('loginModal').classList.add('show');
+    }
+  }
+
+  function openConfig() {
+    if (!token) { $('loginModal').classList.add('show'); return; }
+    loadConfig();
+    $('drawer').classList.add('open');
+    $('drawer').setAttribute('aria-hidden', 'false');
+    $('drawerMask').classList.add('open');
+  }
+  function closeConfig() {
+    $('drawer').classList.remove('open');
+    $('drawer').setAttribute('aria-hidden', 'true');
+    $('drawerMask').classList.remove('open');
+  }
+
+  async function loadConfig() {
+    try {
+      const p = await api('/projects/' + PROJECT);
+      $('modelPolicy').value = p.modelPolicy || 'local';
+      $('llmBase').value = (p.llmConfig && p.llmConfig.baseUrl) || '';
+      $('llmModel').value = (p.llmConfig && p.llmConfig.model) || '';
+      const ls = (p.logSources && p.logSources[0]) || {};
+      $('logKind').value = ls.kind || 'platform';
+      $('logEndpoint').value = ls.endpoint || ls.path || '';
+      const cs = (p.codeSources && p.codeSources[0]) || {};
+      $('repoType').value = cs.type || 'git';
+      $('repoUrl').value = cs.url || cs.mountPath || '';
+      $('repoBranch').value = cs.branch || '';
+    } catch (e) { /* 保留默认 */ }
+    loadCredentialState();
+  }
+
+  function keyState(id, st) {
+    const el = $(id);
+    if (st && st.configured) { el.textContent = '已配置 ' + st.masked; el.className = 'key-state ok'; }
+    else { el.textContent = '未配置'; el.className = 'key-state'; }
+  }
+
+  async function loadCredentialState() {
+    try {
+      const c = await api('/credentials');
+      keyState('llmKeyState', c.llm);
+      keyState('gitTokenState', c.gitlab);
+    } catch (e) { /* 无权限时静默 */ }
+  }
+
+  async function saveConfig() {
+    const btn = $('saveBtn'); btn.disabled = true; setMsg('cfgMsg', '', true);
+    try {
+      const body = {
+        modelPolicy: val('modelPolicy'),
+        llmConfig: { baseUrl: val('llmBase') || undefined, model: val('llmModel') || undefined },
+        logSources: [{ kind: val('logKind'), endpoint: val('logEndpoint') || undefined, supportsTraceId: true, maxReturn: 2000 }],
+        codeSources: [{
+          type: val('repoType'),
+          url: val('repoType') === 'git' ? (val('repoUrl') || undefined) : undefined,
+          mountPath: val('repoType') === 'local' ? (val('repoUrl') || undefined) : undefined,
+          branch: val('repoBranch') || undefined
+        }]
+      };
+      await api('/projects/' + PROJECT, { method: 'PUT', body: JSON.stringify(body) });
+
+      // 密钥：仅在填写时提交，成功后清空输入框
+      const key = val('llmKey');
+      if (key) {
+        const st = await api('/credentials/llm', { method: 'PUT', body: JSON.stringify({ value: key }) });
+        keyState('llmKeyState', st); $('llmKey').value = '';
+      }
+      const tk = val('gitToken');
+      if (tk) {
+        const st = await api('/credentials/gitlab', { method: 'PUT', body: JSON.stringify({ value: tk }) });
+        keyState('gitTokenState', st); $('gitToken').value = '';
+      }
+      setMsg('cfgMsg', '已保存', true);
+    } catch (e) {
+      setMsg('cfgMsg', e.message, false);
+    } finally { btn.disabled = false; }
+  }
+
+  function previewImg(ev) {
+    const f = ev.target.files && ev.target.files[0];
+    const img = $('imgPreview');
+    if (!f) { imgData = null; img.style.display = 'none'; return; }
+    const reader = new FileReader();
+    reader.onload = function () { imgData = reader.result; img.src = imgData; img.style.display = 'block'; };
+    reader.readAsDataURL(f);
+  }
+
+  async function analyze() {
+    if (!token) { $('loginModal').classList.add('show'); return; }
+    const btn = $('analyzeBtn'); btn.disabled = true; setMsg('anaMsg', '分析中…', true);
+    try {
+      const desc = val('desc');
+      if (!desc && !imgData) { setMsg('anaMsg', '请输入报错信息或上传截图', false); btn.disabled = false; return; }
+      const run = await api('/projects/' + PROJECT + '/analyze', {
+        method: 'POST',
+        body: JSON.stringify({ inputType: imgData ? 'image' : 'text', inputRef: imgData || desc, supplemental: {} })
+      });
+      setMsg('anaMsg', '完成', true);
+      renderReport(run);
+      loadHistory();
+    } catch (e) {
+      setMsg('anaMsg', e.message, false);
+    } finally { btn.disabled = false; }
+  }
+
+  async function loadHistory() {
+    try {
+      const runs = await api('/projects/' + PROJECT + '/runs');
+      const list = (Array.isArray(runs) ? runs : []).slice().reverse().slice(0, 8);
+      $('histCount').textContent = list.length ? ('共 ' + list.length + ' 条（最近优先）') : '';
+      if (!list.length) {
+        $('histList').innerHTML = '<div class="empty">暂无分析记录，输入报错信息开始第一次分析</div>';
+        return;
+      }
+      $('histList').innerHTML = list.map(function (r) {
+        const concl = (r.report && r.report.conclusion) || '（无结论）';
+        const input = r.inputType === 'image' ? '📷 截图输入' : String(r.inputRef || '').slice(0, 60);
+        const st = r.status === 'completed' ? 'done' : r.status === 'partial' ? 'partial' : 'low';
+        return '<div class="hist-item" onclick="viewRun(\'' + esc(r.id) + '\')">'
+          + '<div class="hist-ic">📄</div>'
+          + '<div class="hist-main"><div class="hist-title">' + esc(concl) + '</div>'
+          + '<div class="hist-sub">' + esc(input) + '</div></div>'
+          + '<div class="hist-meta"><span class="badge ' + st + '">' + esc(r.status) + '</span>'
+          + '<div style="margin-top:4px">' + esc(String(r.createdAt || '').slice(0, 19).replace('T', ' ')) + '</div></div>'
+          + '</div>';
+      }).join('');
+    } catch (e) { /* 未登录等情况忽略 */ }
+  }
+
+  async function viewRun(runId) {
+    try {
+      const run = await api('/runs/' + runId);
+      renderReport(run);
+    } catch (e) { setMsg('anaMsg', e.message, false); }
+  }
+
+  // ===== 报告渲染：分区可折叠；证据链默认收起、分页加载 =====
+  let EVDATA = [];
+  const EV_PAGE = 20;
+
+  function toggleSec(el) {
+    el.classList.toggle('open');
+    const body = el.nextElementSibling;
+    if (body && body.classList.contains('sec-body')) body.classList.toggle('open');
+  }
+
+  // 展开态分区
+  function secOpen(title, extra, inner) {
+    return '<div class="rep-section"><div class="rep-label sec-toggle open" onclick="toggleSec(this)">'
+      + '<span class="chev">▸</span>' + title + (extra || '')
+      + '</div><div class="sec-body open">' + inner + '</div></div>';
+  }
+
+  function evItem(e) {
+    const n = e.normalized || {};
+    const lv = String(n.level || '').toUpperCase();
+    const label = lv || (e.sourceType === 'log' ? 'LOG' : e.sourceType === 'code' ? 'CODE' : e.sourceType === 'blame' ? 'BLAME' : e.sourceType === 'data' ? 'DATA' : 'EV');
+    const cls = lv === 'ERROR' || lv === 'WARN' || lv === 'INFO' ? lv : (e.sourceType === 'code' || e.sourceType === 'blame' || e.sourceType === 'data' ? e.sourceType : '');
+    const t = n.time ? String(n.time).replace('T', ' ').slice(5, 19) : '';
+    return '<li class="ev" onclick="this.classList.toggle(\'expanded\')">'
+      + '<div class="ev-head"><span class="lv ' + esc(cls) + '">' + esc(label) + '</span>'
+      + (n.service ? '<span class="mono">' + esc(n.service) + '</span>' : '')
+      + (t ? '<span class="ev-time">' + esc(t) + '</span>' : '')
+      + '</div>'
+      + '<div class="ev-msg">' + esc(n.message || n.stack || '(无消息)') + '</div>'
+      + '<div class="ev-meta">' + esc(e.rawPointer || '')
+      + (n.traceId ? ' · trace ' + esc(n.traceId) : '')
+      + (e.dedupCount ? ' · 重复 ' + esc(e.dedupCount) + ' 次' : '')
+      + '</div></li>';
+  }
+
+  function renderEvidence(page) {
+    const ul = $('evList');
+    if (!ul) return;
+    if (!EVDATA.length) { ul.innerHTML = '<li>（无）</li>'; $('evMore').innerHTML = ''; return; }
+    const shown = Math.min(EVDATA.length, page * EV_PAGE);
+    ul.innerHTML = EVDATA.slice(0, shown).map(evItem).join('');
+    $('evMore').innerHTML = shown < EVDATA.length
+      ? '<button class="more-btn" onclick="renderEvidence(' + (page + 1) + ')">展开更多 · 还剩 ' + (EVDATA.length - shown) + ' 条</button>'
+      : '<div class="muted" style="text-align:center;padding:8px 0">已显示全部 ' + EVDATA.length + ' 条</div>';
+  }
+
+  function renderReport(run) {
+    const r = run.report || {};
+    const f = (r.findings || [])[0] || {};
+    const cl = f.codeLocation;
+    const dp = f.dataProbe;
+    const conf = r.confidence || '-';
+    const confClass = conf === 'high' ? 'high' : conf === 'medium' ? 'medium' : 'low';
+    const statusClass = run.status === 'completed' ? 'done' : 'partial';
+    EVDATA = r.evidenceChain || [];
+
+    let html = '';
+    html += '<div class="rep-head">';
+    html += '<div class="rep-concl">' + esc(r.conclusion || '（无结论）') + '</div>';
+    html += '<div class="rep-badges">';
+    html += '<span class="badge type">' + esc(r.conclusionType || 'unknown') + '</span>';
+    html += '<span class="badge ' + confClass + '">置信度 ' + esc(conf) + '</span>';
+    html += '<span class="badge ' + statusClass + '">' + esc(run.status) + '</span>';
+    (r.demoParts || []).forEach(function (p) {
+      html += '<span class="badge partial">⚠ ' + esc(p) + ' 为演示占位数据</span>';
+    });
+    html += '</div></div>';
+
+    html += '<div class="rep-body">';
+
+    // 证据链：默认收起，点标题展开；展开后分页渲染
+    html += '<div class="rep-section"><div class="rep-label sec-toggle" onclick="toggleSec(this)">'
+      + '<span class="chev">▸</span>证据链'
+      + '<span class="count-pill">' + (EVDATA.length || '无') + (EVDATA.length ? ' 条' : '') + '</span>'
+      + '</div><div class="sec-body">'
+      + '<ul class="ev-list" id="evList"></ul><div id="evMore"></div>'
+      + '</div></div>';
+
+    const isDemo = function (part) { return (r.demoParts || []).indexOf(part) >= 0; };
+
+    if (cl) {
+      let inner = '<div class="kv">';
+      inner += '<div><span class="mono">' + esc(cl.file) + ':' + esc(cl.line) + '</span></div>';
+      inner += '<div><span class="k">提交</span> <span class="mono">' + esc(cl.blame.shortSha) + '</span> · ' + esc(cl.blame.authorName) + (cl.blame.authorEmployeeId ? ('（工号 ' + esc(cl.blame.authorEmployeeId) + '）') : '') + ' · ' + esc(cl.blame.committedAt) + '</div>';
+      inner += '<div><span class="k">说明</span> ' + esc(cl.blame.message) + '</div>';
+      inner += '<div class="muted" style="margin-top:6px">' + esc(cl.blame.note) + '</div>';
+      if (isDemo('代码位置')) inner += '<div class="hl" style="margin-top:6px">⚠ 以上为演示占位数据（本地目录代码定位未接入），非真实仓库信息</div>';
+      inner += '</div>';
+      html += secOpen('代码位置', isDemo('代码位置') ? '<span class="badge partial">演示</span>' : '', inner);
+    }
+
+    if (dp) {
+      const hl = (dp.highlighted || []).map(function (h) { return '<div>' + esc(h.field) + '：<span class="hl-ok">期望 ' + esc(h.expected) + '</span> / <span class="hl">实际 ' + esc(h.actual) + '</span></div>'; }).join('');
+      let inner = '<div class="kv">';
+      inner += '<div>表 <span class="mono">' + esc(dp.table) + '</span> · 主键 ' + esc(dp.pkField) + '=' + esc(dp.pkValue) + ' · 状态 ' + esc(dp.status) + '</div>';
+      if (dp.reason) inner += '<div class="muted">' + esc(dp.reason) + '</div>';
+      inner += hl;
+      if (isDemo('数据定位')) inner += '<div class="hl" style="margin-top:6px">⚠ 以上为演示占位数据（真实只读数据库未接入），非真实查询结果</div>';
+      inner += '</div>';
+      html += secOpen('数据定位', isDemo('数据定位') ? '<span class="badge partial">演示</span>' : '', inner);
+    }
+
+    if (r.impact) html += secOpen('影响面', '', '<div class="kv">' + esc(r.impact) + '</div>');
+    if (r.suggestions && r.suggestions.length) {
+      html += secOpen('建议', '<span class="count-pill">' + r.suggestions.length + '</span>',
+        '<ul class="ev-list">' + r.suggestions.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ul>');
+    }
+    if (r.unverified && r.unverified.length) {
+      html += secOpen('未验证项', '<span class="count-pill">' + r.unverified.length + '</span>',
+        '<ul class="ev-list">' + r.unverified.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ul>');
+    }
+    html += '</div>';
+
+    $('reportCard').innerHTML = html;
+    renderEvidence(1);
+    $('reportSection').style.display = 'block';
+    $('reportSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  window.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeConfig(); });
+  window.addEventListener('load', function () {
+    $('openConfigBtn').disabled = true;
+    login().then(function () {
+      loadHistory();
+      if (location.search.indexOf('config=1') >= 0) openConfig();
+      // 深链：?run=<id> 直接打开某次报告
+      const runId = new URLSearchParams(location.search).get('run');
+      if (runId) viewRun(runId);
+    });
+  });
+</script>
+</body>
+</html>
