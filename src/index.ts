@@ -15,6 +15,7 @@ import { projectRoutes } from './routes/projects.js';
 import { analyzeRoutes } from './routes/analyze.js';
 import { auditRoutes } from './routes/audit.js';
 import { credentialRoutes } from './routes/credentials.js';
+import { settingsRoutes } from './routes/settings.js';
 import type { Project, User } from './types.js';
 import { v4 as uuid } from 'uuid';
 
@@ -99,6 +100,7 @@ async function bootstrap(): Promise<void> {
   await analyzeRoutes(app, repos, orchestrator, audit);
   await auditRoutes(app, repos);
   await credentialRoutes(app, audit);
+  await settingsRoutes(app, audit);
 
   logger.info(
     { demoProjectId: sampleProject.id, adminEmployeeId: admin.employeeId, memberEmployeeId: member.employeeId },

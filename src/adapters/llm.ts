@@ -39,11 +39,13 @@ export function createStubLLMAdapter(): LLMAdapter {
         kw = (raw.match(/[a-zA-Z][a-zA-Z0-9_.-]{3,}/g) || []).slice(0, 5);
       }
       if (!kw.length) kw = ['error'];
-      // 时间窗：识别「最近一天/24小时/今天/昨天」类表述，否则默认 ±10 分钟
+      // 时间窗：识别具体表述；未提供时间信息时默认 24 小时（线上排查常见范围，避免窗口过窄查空）
       const text = raw;
-      let windowMs = 10 * 60 * 1000;
-      if (/最近一(天|日)|24\s*小时?|过去一(天|日)|一天(内|以来)/.test(text)) windowMs = 24 * 60 * 60 * 1000;
+      let windowMs = 24 * 60 * 60 * 1000;
+      if (/最近一(小时|钟头)|1\s*小时|过去一(小时|钟头)/.test(text)) windowMs = 60 * 60 * 1000;
+      else if (/30\s*分钟|半小时/.test(text)) windowMs = 30 * 60 * 1000;
       else if (/最近一(周|星期)|7\s*天|一周(内|以来)/.test(text)) windowMs = 7 * 24 * 60 * 60 * 1000;
+      else if (/最近一(天|日)|24\s*小时?|过去一(天|日)|一天(内|以来)/.test(text)) windowMs = 24 * 60 * 60 * 1000;
       const anchor = supplemental.occurredAt ? new Date(supplemental.occurredAt).getTime() : Date.now();
       return {
         keywords: kw,
@@ -229,21 +231,27 @@ export function createOpenAILLMAdapter(opts: RealLLMOptions): LLMAdapter {
 }
 
 // 选择器：项目 modelPolicy=external 且配置了端点（项目级优先，env 兜底）→ 真实适配器；否则 stub
-export function selectLLMAdapter(project: {
-  modelPolicy: 'local' | 'external';
-  llmConfig?: { baseUrl?: string; model?: string; reasoningEffort?: 'none' | 'low' | 'high' | 'max' };
-}): LLMAdapter {
-  if (project.modelPolicy === 'external') {
-    const baseUrl = project.llmConfig?.baseUrl || config.LLM_BASE_URL;
-    const model = project.llmConfig?.model || config.LLM_MODEL || 'gpt-4o-mini';
-    if (baseUrl) {
-      return createOpenAILLMAdapter({
-        baseUrl,
-        apiKey: config.LLM_API_KEY,
-        model,
-        reasoningEffort: project.llmConfig?.reasoningEffort,
-      });
-    }
+// 选择器：全局模型设置优先（全项目共用），项目级配置作为回退/覆盖；都没有则 stub
+export function selectLLMAdapter(
+  project: {
+    modelPolicy: 'local' | 'external';
+    llmConfig?: { baseUrl?: string; model?: string; reasoningEffort?: 'none' | 'low' | 'high' | 'max' };
+  },
+  globalLLM?: {
+    modelPolicy?: 'local' | 'external';
+    baseUrl?: string;
+    model?: string;
+    reasoningEffort?: 'none' | 'low' | 'high' | 'max';
+  },
+): LLMAdapter {
+  // 全局配置了端点就以全局为准；否则用项目级；再退到 env
+  const useGlobal = Boolean(globalLLM?.baseUrl);
+  const policy = useGlobal ? (globalLLM?.modelPolicy ?? project.modelPolicy) : project.modelPolicy;
+  const baseUrl = (useGlobal ? globalLLM?.baseUrl : project.llmConfig?.baseUrl) || config.LLM_BASE_URL;
+  const model = (useGlobal ? globalLLM?.model : project.llmConfig?.model) || config.LLM_MODEL || 'gpt-4o-mini';
+  const reasoningEffort = useGlobal ? globalLLM?.reasoningEffort : project.llmConfig?.reasoningEffort;
+  if (policy === 'external' && baseUrl) {
+    return createOpenAILLMAdapter({ baseUrl, apiKey: config.LLM_API_KEY, model, reasoningEffort });
   }
   return createStubLLMAdapter();
 }

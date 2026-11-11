@@ -88,8 +88,11 @@ export function createHttpLogSourceAdapter(): LogSourceAdapter {
 
 // ===== VictoriaLogs 适配器（/select/logsql/query，NDJSON 流式返回）=====
 // 兼容用户误填 vmui 网页地址：自动回退到同主机 API 地址
+// LogsQL 裸词过滤：含 = : 等运算符字符时必须包成短语，否则会被解析成字段过滤并报错
 function sanitizeLogsQLWord(w: string): string {
-  return w.replace(/["{}|*\\\n\r]/g, '').trim().slice(0, 64);
+  const s = w.replace(/["\\\n\r]/g, '').trim().slice(0, 64);
+  if (!s) return '';
+  return /[=:{}|()[\]*~!<>,]/.test(s) ? `"${s}"` : s;
 }
 
 function extractTraceId(msg: string): string | undefined {
@@ -133,10 +136,15 @@ export function createVictoriaLogsAdapter(): LogSourceAdapter {
           })
           .filter((r): r is Record<string, unknown> => r !== null);
       };
-      // 主查询：按计划关键词（结果按时间倒序，最新在前）；兜底：关键词命中 0 条时改查 ERROR/WARN
-      let rows = await fetchRows(kw.length ? kw.join(' OR ') : '*');
+      // 主查询：按计划关键词（时间倒序）；关键词语法非法或命中 0 条时，兜底查 ERROR/WARN
+      let rows: Record<string, unknown>[] = [];
       let usedFallback = false;
-      if (rows.length === 0 && kw.length) {
+      try {
+        rows = await fetchRows(kw.length ? kw.join(' OR ') : '*');
+      } catch {
+        usedFallback = true; // 关键词含无法解析的语法，直接走兜底
+      }
+      if (rows.length === 0) {
         usedFallback = true;
         rows = await fetchRows('level:="ERROR" OR level:="WARN"');
       }

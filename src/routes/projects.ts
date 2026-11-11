@@ -151,4 +151,34 @@ export async function projectRoutes(
       return updated;
     },
   );
+
+  // 删除项目：级联清除该项目的分析记录与证据（审计保留）
+  app.delete(
+    '/projects/:id',
+    { preHandler: [authenticate, requirePermission('project:configure')] },
+    async (req, reply) => {
+      const id = (req.params as { id: string }).id;
+      const existing = await repos.projects.get(id);
+      if (!existing) return reply.code(404).send({ error: { code: 'NOT_FOUND', message: '项目不存在' } });
+      if (req.user!.role !== 'platform_admin' && existing.ownerId !== req.user!.sub) {
+        throw new ForbiddenError('禁止删除他人项目');
+      }
+      const runs = await repos.runs.listByProject(id);
+      for (const r of runs) {
+        await repos.evidence.deleteByRun(r.id);
+        await repos.hypotheses.deleteByRun(r.id);
+        await repos.findings.deleteByRun(r.id);
+        await repos.feedback.deleteByRun(r.id);
+        await repos.runs.delete(r.id);
+      }
+      await repos.projects.delete(id);
+      await audit.record({
+        actor: req.user!.employeeId,
+        projectId: id,
+        action: 'project_deleted',
+        detail: `删除项目「${existing.name}」及 ${runs.length} 条分析记录`,
+      });
+      return reply.code(200).send({ deleted: true, projectId: id, runsDeleted: runs.length });
+    },
+  );
 }

@@ -17,6 +17,7 @@ export interface ProjectRepository {
   get(id: string): Promise<Project | undefined>;
   list(): Promise<Project[]>;
   update(p: Project): Promise<Project>;
+  delete(id: string): Promise<boolean>;
 }
 
 export interface CredentialRepository {

@@ -73,6 +73,11 @@ class MemProjectRepository implements ProjectRepository {
     this.persist();
     return p;
   }
+  async delete(id: string) {
+    const ok = this.store.delete(id);
+    if (ok) this.persist();
+    return ok;
+  }
 }
 
 class MemCredentialRepository implements CredentialRepository {

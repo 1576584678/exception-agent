@@ -116,6 +116,10 @@ async function main() {
   check('image input analyze 201', img.status === 201);
   check('image input report generated', !!ir.report, 'status=' + ir.status);
 
+  // 清理：删除本次创建的项目，避免污染用户的项目列表
+  const del = await fetch(BASE + '/projects/' + proj.id, { method: 'DELETE', headers: H });
+  check('cleanup temp project', del.status === 200);
+
   console.log('\n' + (failures === 0 ? 'ALL PASS' : failures + ' FAILURES'));
   process.exit(failures === 0 ? 0 : 1);
 }

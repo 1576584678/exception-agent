@@ -3,6 +3,7 @@ import { v4 as uuid } from 'uuid';
 import type { AnalysisRun, Evidence, Report, RetrievePlan, RunStage } from '../types.js';
 import type { Repositories } from '../repositories/interfaces.js';
 import { selectLLMAdapter } from '../adapters/llm.js';
+import { getLLMSettings } from './settingsStore.js';
 import { selectLogAdapter } from '../adapters/logSource.js';
 import { selectCodeAdapter } from '../adapters/codeSource.js';
 import { createStubDataSourceAdapter, type QueryIntent } from '../adapters/dataSource.js';
@@ -65,8 +66,8 @@ export class AnalysisOrchestrator {
     const project = await this.repos.projects.get(req.projectId);
     if (!project) throw new NotFoundError('项目不存在');
 
-    // 按项目配置选择适配器：大模型（modelPolicy）、日志源（endpoint）、代码源（git 地址）
-    const llm = selectLLMAdapter(project);
+    // 按配置选择适配器：大模型（全局设置优先）→ 日志源（项目）→ 代码源（项目）
+    const llm = selectLLMAdapter(project, getLLMSettings());
     const logAdapter = selectLogAdapter(project.logSources[0]);
     const codeAdapter = selectCodeAdapter(project.codeSources[0]);
 
