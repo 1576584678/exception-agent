@@ -172,8 +172,6 @@ export interface Report {
   unverified: string[];
   plan: RetrievePlan;
   status: 'completed' | 'partial';
-  // 演示占位标注：列出使用了 stub 假数据的部分（如 代码位置/数据定位），UI 显式提示，避免误认为真实结论
-  demoParts?: string[];
 }
 
 export interface RunStage {

@@ -651,9 +651,6 @@
     html += '<span class="badge type">' + esc(r.conclusionType || 'unknown') + '</span>';
     html += '<span class="badge ' + confClass + '">置信度 ' + esc(conf) + '</span>';
     html += '<span class="badge ' + statusClass + '">' + esc(run.status) + '</span>';
-    (r.demoParts || []).forEach(function (p) {
-      html += '<span class="badge partial">⚠ ' + esc(p) + ' 为演示占位数据</span>';
-    });
     html += '</div></div>';
 
     html += '<div class="rep-body">';
@@ -666,17 +663,14 @@
       + '<ul class="ev-list" id="evList"></ul><div id="evMore"></div>'
       + '</div></div>';
 
-    const isDemo = function (part) { return (r.demoParts || []).indexOf(part) >= 0; };
-
     if (cl) {
       let inner = '<div class="kv">';
       inner += '<div><span class="mono">' + esc(cl.file) + ':' + esc(cl.line) + '</span></div>';
       inner += '<div><span class="k">提交</span> <span class="mono">' + esc(cl.blame.shortSha) + '</span> · ' + esc(cl.blame.authorName) + (cl.blame.authorEmployeeId ? ('（工号 ' + esc(cl.blame.authorEmployeeId) + '）') : '') + ' · ' + esc(cl.blame.committedAt) + '</div>';
       inner += '<div><span class="k">说明</span> ' + esc(cl.blame.message) + '</div>';
       inner += '<div class="muted" style="margin-top:6px">' + esc(cl.blame.note) + '</div>';
-      if (isDemo('代码位置')) inner += '<div class="hl" style="margin-top:6px">⚠ 以上为演示占位数据（本地目录代码定位未接入），非真实仓库信息</div>';
       inner += '</div>';
-      html += secOpen('代码位置', isDemo('代码位置') ? '<span class="badge partial">演示</span>' : '', inner);
+      html += secOpen('代码位置', '', inner);
     }
 
     if (dp) {
@@ -684,10 +678,8 @@
       let inner = '<div class="kv">';
       inner += '<div>表 <span class="mono">' + esc(dp.table) + '</span> · 主键 ' + esc(dp.pkField) + '=' + esc(dp.pkValue) + ' · 状态 ' + esc(dp.status) + '</div>';
       if (dp.reason) inner += '<div class="muted">' + esc(dp.reason) + '</div>';
-      inner += hl;
-      if (isDemo('数据定位')) inner += '<div class="hl" style="margin-top:6px">⚠ 以上为演示占位数据（真实只读数据库未接入），非真实查询结果</div>';
-      inner += '</div>';
-      html += secOpen('数据定位', isDemo('数据定位') ? '<span class="badge partial">演示</span>' : '', inner);
+      inner += hl + '</div>';
+      html += secOpen('数据定位', '', inner);
     }
 
     if (r.impact) html += secOpen('影响面', '', '<div class="kv">' + esc(r.impact) + '</div>');

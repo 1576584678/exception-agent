@@ -36,8 +36,9 @@ async function main() {
   check('analyze 201', az.status === 201, 'status=' + run.status);
   check('report completed', run.report && run.report.status === 'completed', 'confidence=' + run.report?.confidence);
   check('evidence mounted', Array.isArray(run.report?.evidenceChain) && run.report.evidenceChain.length > 0);
-  check('code location blame note', !!run.report?.findings?.[0]?.codeLocation?.blame?.note);
-  check('data probe success', run.report?.findings?.[0]?.dataProbe?.status === 'success');
+  // stub 场景：不产出假代码位置/假数据查询，报告只含真实来源部分
+  check('no fake codeLocation (stub skipped)', run.report?.findings?.[0]?.codeLocation === undefined);
+  check('no fake dataProbe (stub skipped)', run.report?.findings?.[0]?.dataProbe === undefined);
 
   const gr = await fetch(BASE + '/runs/' + run.id, { headers: H });
   check('GET /runs/:id 200', gr.status === 200);

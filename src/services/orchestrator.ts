@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
 import { v4 as uuid } from 'uuid';
-import type { AnalysisRun, Evidence, Report, RetrievePlan, RunStage } from '../types.js';
+import type { AnalysisRun, Evidence, Finding, Report, RetrievePlan, RunStage } from '../types.js';
 import type { Repositories } from '../repositories/interfaces.js';
 import { selectLLMAdapter } from '../adapters/llm.js';
 import { getLLMSettings } from './settingsStore.js';
@@ -146,23 +146,45 @@ export class AnalysisOrchestrator {
     }
     run.status = 'attributing';
 
-    // 阶段4 归因（代码源）
-    this.stage(run, 'attribute', 'running');
-    const located = await codeAdapter.locate({
-      errorText: run.parsedFields.errorText,
-      stack: run.parsedFields.stack,
-    });
-    const loc0 = located[0];
-    if (!loc0) throw new Error('代码定位失败');
-    const blame = await codeAdapter.blame(loc0.file, loc0.line);
-    const commit = await codeAdapter.resolveCommitAt(req.supplemental.occurredAt);
-    this.stage(run, 'attribute', 'done');
+    // 阶段4 归因（代码源）：stub 场景不产出假代码位置，直接跳过
+    const codeReal = !codeAdapter.name.includes('stub');
+    let codeLocation: NonNullable<Finding['codeLocation']> | undefined;
+    let codeNote: string | undefined;
+    if (!codeReal) {
+      codeNote = '代码定位未接入真实仓库（当前代码源为本地目录，尚未实现文件级定位），本报告不含代码位置信息';
+      this.stage(run, 'attribute', 'skipped');
+    } else {
+      this.stage(run, 'attribute', 'running');
+      const located = await codeAdapter.locate({
+        errorText: run.parsedFields.errorText,
+        stack: run.parsedFields.stack,
+      });
+      const loc0 = located[0];
+      if (loc0) {
+        const blame = await codeAdapter.blame(loc0.file, loc0.line);
+        const commit = await codeAdapter.resolveCommitAt(req.supplemental.occurredAt);
+        codeLocation = {
+          file: loc0.file,
+          line: loc0.line,
+          snippet: loc0.snippet,
+          blame,
+          commitSha: commit.sha,
+          versionAligned: commit.versionAligned,
+        };
+        this.stage(run, 'attribute', 'done');
+      } else {
+        codeNote = '未能从输入中解析出候选代码位置（堆栈中无 文件:行号 信息）';
+        this.stage(run, 'attribute', 'done');
+      }
+    }
     run.status = 'data_checking';
 
-    // 阶段5 数据核查（数据源）— 失败降级为 SQL 模板（FR-29）
-    this.stage(run, 'datacheck', 'running');
+    // 阶段5 数据核查（数据源）：stub 场景不产出假查询结果，直接跳过
+    const dataReal = !this.dataSource.name.includes('stub');
     let dataProbe: Report['findings'][number]['dataProbe'];
-    if (req.forceDegrade === 'data' || project.dataSources.length === 0) {
+    if (!dataReal) {
+      this.stage(run, 'datacheck', 'skipped');
+    } else if (req.forceDegrade === 'data' || project.dataSources.length === 0) {
       dataProbe = {
         table: 'order',
         pkField: 'id',
@@ -220,15 +242,8 @@ export class AnalysisOrchestrator {
       statement: summary.conclusion,
       evidenceIds: evidence.map((e) => e.id),
       confidence: logDegraded ? 'low' : summary.confidence,
-      codeLocation: {
-        file: loc0.file,
-        line: loc0.line,
-        snippet: loc0.snippet,
-        blame,
-        commitSha: commit.sha,
-        versionAligned: commit.versionAligned,
-      },
-      dataProbe,
+      ...(codeLocation ? { codeLocation } : {}),
+      ...(dataProbe ? { dataProbe } : {}),
     };
     await this.repos.findings.add(finding);
 
@@ -236,9 +251,6 @@ export class AnalysisOrchestrator {
     const impact = evidence.length
       ? `共 ${evidence.length} 条日志证据（时间窗 ${plan.timeWindow.from.slice(0, 16)} ~ ${plan.timeWindow.to.slice(0, 16)}，来源 ${logAdapter.name}）`
       : '无日志证据';
-    const demoParts: string[] = [];
-    if (codeAdapter.name.includes('stub')) demoParts.push('代码位置');
-    if (this.dataSource.name.includes('stub')) demoParts.push('数据定位');
 
     const report: Report = {
       runId,
@@ -251,11 +263,11 @@ export class AnalysisOrchestrator {
       suggestions: summary.suggestions || [],
       unverified: [
         ...(collectError ? [`${collectError}（本报告未包含真实日志证据）`] : []),
+        ...(codeNote ? [codeNote] : []),
         ...(summary.unverified || []),
       ],
       plan,
       status: evidence.length && !logDegraded ? 'completed' : 'partial',
-      demoParts,
     };
     // 出报告前校验（闸3）
     const clean = this.redaction.assertClean(JSON.stringify(report));
