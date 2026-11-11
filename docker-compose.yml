@@ -1,0 +1,21 @@
+services:
+  exception-insight:
+    build: .
+    image: exception-insight:0.1.0
+    container_name: exception-insight
+    ports:
+      - "3000:3000"
+    environment:
+      # 必填：生产环境务必使用强随机值（openssl rand -hex 32）
+      JWT_SECRET: ${JWT_SECRET:?please set JWT_SECRET, e.g. export JWT_SECRET=$(openssl rand -hex 32)}
+      # local = 不调外部模型；external = 调用下面配置的 OpenAI 兼容网关
+      MODEL_POLICY: ${MODEL_POLICY:-local}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      GITLAB_TOKEN: ${GITLAB_TOKEN:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      # 项目配置持久化（重启不丢）
+      - ./data:/app/data
+    restart: unless-stopped

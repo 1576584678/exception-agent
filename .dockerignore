@@ -1,0 +1,12 @@
+node_modules
+dist
+release
+data
+.env
+.env.local
+*.log
+.git
+.gitignore
+.workbuddy
+.vscode
+.tmp

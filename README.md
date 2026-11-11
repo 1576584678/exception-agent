@@ -13,9 +13,10 @@ Exception Insight 的目标是把这条链路压缩为一次提交、一份带�
 ## 当前状态
 
 - **PRD**：v1.0 已定稿（`docs/异常分析平台-PRD-v1.0.md`）。
-- **实现**：已交付**端到端 MVP 骨架**，后端分析链路跑通，13 项端到端冒烟全部 PASS（登录鉴权、报告生成、证据挂载、跨项目 403、阶段级降级等）。
-- **技术栈**：Node.js + TypeScript + Fastify；开发期用内存仓储（可一键换 PostgreSQL）；LLM / 日志源 / 代码源 / 数据源均为**可替换适配器 + stub**（无需外部依赖即可跑通）。
-- **尚未包含**：前端 UI（本次范围只做后端链路）、真实私有化模型接入、真实 Git/日志/DB 适配器、凭据外部引用服务。
+- **实现**：端到端 MVP 可运行，包含单页工作台（配置抽屉、报告渲染、证据链折叠、记录删除）。
+- **技术栈**：Node.js 18+ / TypeScript / Fastify；开发期内存仓储 + 项目配置落盘（`data/projects.json`）；LLM / 日志 / 代码 / 数据均为可替换适配器。
+- **已接入真实系统**：OpenAI 兼容大模型（如 DeepSeek）、VictoriaLogs（LogsQL）、GitLab 只读 API。
+- **尚未包含**：真实只读数据库查询、本地目录代码定位、截图 OCR、PostgreSQL 持久化、凭证外部引用（Vault/KMS）。报告中对使用 stub 的部分会显式标注「演示占位」。
 
 ## 技术栈与架构
 
@@ -26,15 +27,61 @@ Exception Insight 的目标是把这条链路压缩为一次提交、一份带�
 
 ## 快速开始
 
+### 开发模式
+
 ```bash
 npm install
 cp .env.example .env          # 已提供开发用 .env，可直接用
-npm run dev                   # 启动（tsx watch，默认 :3000）
+npm run dev                   # tsx watch，默认 :3000
 npm run typecheck             # 类型检查
 npm run smoke                 # 端到端冒烟（需先启动服务）
 ```
 
 种子账号：管理员 `1001 / dev123`（platform_admin）、开发 `2002 / dev123`（member，无项目归属用于演示越权）。示例项目固定 id：`demo-project-1`。
+
+### 生产模式（编译后运行）
+
+```bash
+npm ci --omit=dev             # 或用 npm install
+npm run build                 # tsc → dist/
+JWT_SECRET=$(openssl rand -hex 32) npm start
+```
+
+> `JWT_SECRET` 必填且至少 16 字符，否则启动即退出（fail-fast）。端口用 `PORT` 覆盖，默认 3000。
+
+### 一键启动脚本
+
+- Windows：双击 `start.bat`（自动生成 `.env` 与随机 `JWT_SECRET`、缺依赖自动装、缺 `dist` 自动编译）
+- Linux / macOS：`chmod +x start.sh && ./start.sh`
+
+### Docker
+
+```bash
+export JWT_SECRET=$(openssl rand -hex 32)
+docker compose up -d --build
+# 或
+docker build -t exception-insight:0.1.0 .
+docker run -d -p 3000:3000 -e JWT_SECRET=$JWT_SECRET -v $(pwd)/data:/app/data exception-insight:0.1.0
+```
+
+`data/` 卷用于持久化项目配置；`.env` 不打进镜像，密钥一律走运行时环境变量。
+
+### 打包分发给别人
+
+```bash
+npm run pack
+```
+
+生成 `release/exception-insight.zip`（约 5–10 MB，含编译产物 + 生产依赖 + 启动脚本）。对方机器只需：
+
+1. 安装 Node.js 18+（https://nodejs.org）
+2. 解压 zip
+3. 双击 `start.bat`（Windows）或执行 `./start.sh`
+4. 浏览器打开 http://localhost:3000，用 `1001 / dev123` 登录
+
+首次启动会自动生成 `.env`（含随机 JWT_SECRET）。之后在页面右上角「配置」里填模型地址 / 模型 Key / 日志源 / 代码仓库即可。
+
+> 若对方环境无法访问 npm registry，`release/` 里已包含 `node_modules`，可直接运行。
 
 ## API 端点（已落地）
 
@@ -44,11 +91,14 @@ npm run smoke                 # 端到端冒烟（需先启动服务）
 | GET | `/me` | 登录 | 当前用户 |
 | GET | `/health`、`/ready` | 公开 | 健康检查 |
 | GET/POST | `/projects` | project:configure / project:create | M1 项目配置（FR-01） |
-| GET | `/projects/:id` | project:configure | 项目详情 |
+| GET/PUT | `/projects/:id` | project:configure | 项目详情 / 更新配置 |
 | POST | `/projects/:id/analyze` | analysis:submit | 提交分析（M2–M6 主链路） |
 | GET | `/projects/:id/runs` | 本项目成员 | 分析任务列表 |
 | GET | `/runs/:runId` | 本项目成员 | 获取报告 |
+| DELETE | `/runs/:runId` | 本项目成员 | 删除分析记录（级联清除证据） |
 | POST | `/runs/:runId/feedback` | feedback:mark | 结论反馈（FR-33） |
+| GET | `/credentials` | 登录 | 凭证状态（仅掩码） |
+| PUT | `/credentials/llm`、`/credentials/gitlab` | project:configure | 保存密钥（写 .env，不落库） |
 | GET | `/audit` | audit:view | 审计日志（FR-40） |
 
 ## 配置大模型 / 日志 / Git（配置真正生效）
@@ -80,9 +130,9 @@ curl -X POST http://localhost:3000/projects \
 
 ## 已实现 vs 待实现（对照 PRD）
 
-**已实现（骨架）**：分层架构；配置集中校验 + 结构化日志 + 类型化错误；JWT+RBAC；脱敏三闸（采集/入模/出报告）；审计 append-only；分析编排器 + 状态机（PRD §9.1）+ 阶段级降级（FR-42）；**真实 OpenAI 兼容 LLM / HTTP 日志源 / Git 代码源适配器（按项目配置自动选择）**；截图 / 报错描述双输入（截图 OCR 为占位）；内存仓储（审计不可删改、证据 TTL）；端到端冒烟 19 项全 PASS。
+**已实现**：分层架构；配置集中校验 + 结构化日志 + 类型化错误；JWT+RBAC；脱敏三闸（采集/入模/出报告）；审计 append-only；分析编排器 + 状态机（PRD §9.1）+ 阶段级降级（FR-42）；真实 OpenAI 兼容 LLM / VictoriaLogs / GitLab 代码源适配器（按项目配置自动选择）；截图 / 报错描述双输入（截图 OCR 为占位）；项目配置持久化；单页工作台（配置抽屉、报告折叠、证据分页、记录删除、演示占位标注）；端到端冒烟 21 项全 PASS。
 
-**待实现（按 PRD 演进）**：真实私有化模型联调（适配器已就绪，配 `modelPolicy=external` + `llmConfig` 即启用）；真实 GitLab blame / 日志平台 API 联调（骨架已就绪）；真实 DB 只读连接（当前为白名单校验 + stub 数据）；PostgreSQL 持久化（`STORAGE=pg` + 迁移）；前端报告页与配置 UI；截图 OCR 接入视觉模型；凭证外部引用服务（Vault/KMS）；并发队列、后台续跑、人工接管（FR-43/44）；V2+ 多项目联合、前端 SourceMap 反解等。
+**待实现（按 PRD 演进）**：真实只读数据库查询（当前白名单校验 + stub 数据，报告已标注「演示」）；本地目录代码定位（`type=local` 目前走 stub）；截图 OCR 接入视觉模型；PostgreSQL 持久化分析记录（`STORAGE=pg` + 迁移）；凭证外部引用服务（Vault/KMS）；并发队列、后台续跑、人工接管（FR-43/44）；V2+ 多项目联合、前端 SourceMap 反解等。
 
 ## 给 AI 协作伙伴
 
