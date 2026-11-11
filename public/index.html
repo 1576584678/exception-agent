@@ -31,6 +31,18 @@
   .userchip .av{width:20px;height:20px;border-radius:50%;background:var(--primary-soft);color:var(--primary);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
   .proj-select{border:1px solid var(--border);background:var(--surface);border-radius:9px;padding:7px 10px;font-size:13px;color:var(--text);max-width:210px;outline:0;cursor:pointer;font-weight:600}
   .proj-select:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(79,70,229,.14)}
+  .proj-label{font-size:12px;color:var(--muted);margin-right:-4px}
+  .proj-branch{display:none;align-items:center;gap:4px;font-size:11px;color:var(--muted);background:var(--surface-2);border:1px solid var(--border);border-radius:999px;padding:4px 9px;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .proj-branch.show{display:inline-flex}
+  .proj-menu-wrap{position:relative}
+  .icon-btn{padding:7px 10px;font-size:15px;line-height:1;letter-spacing:1px}
+  .proj-menu{position:absolute;top:calc(100% + 6px);right:0;min-width:180px;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-md);padding:6px;display:none;z-index:30}
+  .proj-menu.open{display:block}
+  .proj-menu button{display:block;width:100%;text-align:left;border:0;background:transparent;padding:9px 10px;border-radius:7px;font-size:13px;color:var(--text);cursor:pointer}
+  .proj-menu button:hover{background:var(--surface-2)}
+  .proj-menu button.danger{color:var(--danger)}
+  .proj-menu button.danger:hover{background:#fef2f2}
+  .menu-sep{height:1px;background:var(--border);margin:5px 4px}
   .btn{border:0;border-radius:10px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;transition:.18s}
   .btn-ghost{background:var(--surface);border:1px solid var(--border);color:var(--text)}
   .btn-ghost:hover{background:var(--surface-2)}
@@ -164,8 +176,19 @@
     <span class="brand-text"><strong>Exception Insight</strong><small>异常分析平台</small></span>
   </div>
   <div class="spacer"></div>
+  <label class="proj-label">当前项目</label>
   <select class="proj-select" id="projectSel" onchange="switchProject(this.value)" title="切换项目"></select>
-  <button class="btn btn-ghost" onclick="openNewProject()">+ 项目</button>
+  <span class="proj-branch" id="curBranch" title="代码仓库分支（在项目配置里修改）"></span>
+  <button class="btn btn-ghost" onclick="openNewProject()">+ 新建项目</button>
+  <div class="proj-menu-wrap">
+    <button class="btn btn-ghost icon-btn" id="projMenuBtn" onclick="toggleProjMenu(event)" title="项目操作">⋯</button>
+    <div class="proj-menu" id="projMenu">
+      <button onclick="closeProjMenu();openConfig()">编辑当前项目配置</button>
+      <button onclick="closeProjMenu();openNewProject()">+ 新建项目</button>
+      <div class="menu-sep"></div>
+      <button class="danger" onclick="closeProjMenu();deleteProject()">删除当前项目</button>
+    </div>
+  </div>
   <div class="userchip" id="userchip"><span class="av">?</span><span id="userText">未登录</span></div>
   <button class="btn btn-ghost" id="openConfigBtn" onclick="openConfig()">配置</button>
 </header>
@@ -229,7 +252,7 @@
       <input class="f" id="llmKey" type="password" autocomplete="new-password" placeholder="sk-…（留空表示不修改）" />
     </div>
     <div class="field-group">
-      <div class="field-group-title"><span class="idx">2</span> 日志源 <span class="tag-proj" id="curProjTag">当前项目</span></div>
+      <div class="field-group-title"><span class="idx">2</span> 日志源 <span class="tag-proj curProjName" id="curProjTag">当前项目</span></div>
       <label class="f">类型</label>
       <select class="f" id="logKind">
         <option value="platform">日志平台链接</option>
@@ -239,7 +262,7 @@
       <input class="f" id="logEndpoint" placeholder="日志平台地址 或 目录路径" />
     </div>
     <div class="field-group">
-      <div class="field-group-title"><span class="idx">3</span> 代码仓库</div>
+      <div class="field-group-title"><span class="idx">3</span> 代码仓库 <span class="tag-proj curProjName">当前项目</span></div>
       <label class="f">类型</label>
       <select class="f" id="repoType">
         <option value="git">Git 地址</option>
@@ -248,7 +271,7 @@
       <label class="f">地址 / 目录</label>
       <input class="f" id="repoUrl" placeholder="Git 地址 或 本地目录路径" />
       <label class="f">分支</label>
-      <input class="f" id="repoBranch" placeholder="默认 main" />
+      <input class="f" id="repoBranch" placeholder="默认 main（用于 blame / 文件读取）" />
       <label class="f">访问 Token <span class="key-state" id="gitTokenState">未配置</span></label>
       <input class="f" id="gitToken" type="password" autocomplete="new-password" placeholder="GitLab read_api 只读 token（留空表示不修改）" />
     </div>
@@ -273,7 +296,10 @@
     <label class="f">日志源地址（必填）</label>
     <input class="f" id="npLog" placeholder="http://192.168.x.x:9428/select/logsql/query" />
     <label class="f">代码仓库地址（可选）</label>
-    <input class="f" id="npRepo" placeholder="Git 地址 或 本地目录" />
+    <input class="f" id="npRepo" placeholder="Git 地址 或 本地目录，如 http://git.internal/aigit/repo" />
+    <label class="f">分支（可选，默认 main）</label>
+    <input class="f" id="npBranch" placeholder="main" />
+    <p class="muted" style="font-size:11.5px;margin:6px 2px 0">分支用于代码定位：读该分支的文件做 blame / 提交人追溯。仓库可留空，只做日志归因。</p>
     <div style="margin-top:16px;display:flex;gap:10px">
       <button class="btn btn-ghost" style="flex:1" onclick="closeNewProject()">取消</button>
       <button class="btn btn-primary" style="flex:1" id="npBtn" onclick="createProject()">创建</button>
@@ -343,14 +369,23 @@
     $('drawerMask').classList.remove('open');
   }
 
-  // ===== 项目管理：多项目切换 / 新建 =====
+  // ===== 项目管理：多项目切换 / 新建 / 删除 =====
+  function toggleProjMenu(ev) {
+    if (ev) ev.stopPropagation();
+    $('projMenu').classList.toggle('open');
+  }
+  function closeProjMenu() { $('projMenu').classList.remove('open'); }
+  document.addEventListener('click', function () { closeProjMenu(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeProjMenu(); });
+
   async function loadProjects() {
     try {
       const list = await api('/projects');
       const sel = $('projectSel');
       if (!Array.isArray(list) || !list.length) {
-        sel.innerHTML = '<option value="">（无项目）</option>';
-        return;
+        sel.innerHTML = '<option value="">（无项目，请先新建）</option>';
+        setCurProjectUI(null);
+        return list;
       }
       sel.innerHTML = list.map(function (p) {
         return '<option value="' + esc(p.id) + '">' + esc(p.name) + (p.env === 'prod' ? ' · prod' : '') + '</option>';
@@ -358,12 +393,28 @@
       if (!list.some(function (p) { return p.id === PROJECT; })) PROJECT = list[0].id;
       sel.value = PROJECT;
       localStorage.setItem('ei.project', PROJECT);
-      const cur = list.filter(function (p) { return p.id === PROJECT; })[0];
-      if (cur && $('curProjTag')) $('curProjTag').textContent = cur.name;
+      setCurProjectUI(list.filter(function (p) { return p.id === PROJECT; })[0] || null);
+      return list;
     } catch (e) { /* 未登录忽略 */ }
   }
 
-  function switchProject(id) {    if (!id || id === PROJECT) return;
+  // 顶栏/抽屉里所有「当前项目」提示与分支徽标
+  function setCurProjectUI(p) {
+    document.querySelectorAll('.curProjName').forEach(function (el) {
+      el.textContent = p ? p.name : '当前项目';
+    });
+    const br = $('curBranch');
+    if (!br) return;
+    const cs = p && p.codeSources && p.codeSources[0];
+    if (!cs) { br.className = 'proj-branch'; br.textContent = ''; return; }
+    const label = cs.type === 'git' ? '⎇ ' + (cs.branch || 'main') : '⎇ 本地目录';
+    br.className = 'proj-branch show';
+    br.textContent = label;
+    br.title = cs.type === 'git' ? 'Git ' + (cs.url || '') + ' · ' + (cs.branch || 'main') : '本地目录：' + (cs.mountPath || '');
+  }
+
+  function switchProject(id) {
+    if (!id || id === PROJECT) return;
     PROJECT = id;
     localStorage.setItem('ei.project', id);
     currentRunId = null;
@@ -375,10 +426,12 @@
   }
 
   function openNewProject() {
+    closeProjMenu();
     if (!token) { $('loginModal').classList.add('show'); return; }
-    $('npName').value = ''; $('npLog').value = ''; $('npRepo').value = '';
+    $('npName').value = ''; $('npLog').value = ''; $('npRepo').value = ''; $('npBranch').value = '';
     $('npMsg').textContent = '';
     $('newProjectModal').classList.add('show');
+    setTimeout(function () { $('npName').focus(); }, 60);
   }
   function closeNewProject() { $('newProjectModal').classList.remove('show'); }
 
@@ -390,6 +443,7 @@
     const btn = $('npBtn'); btn.disabled = true; setMsg('npMsg', '', true);
     try {
       const repo = val('npRepo');
+      const branch = val('npBranch');
       const isGit = /^https?:\/\//i.test(repo);
       const p = await api('/projects', {
         method: 'POST',
@@ -397,7 +451,7 @@
           name: name,
           env: val('npEnv'),
           logSources: [{ kind: 'platform', endpoint: log, timeField: '_time', supportsTraceId: true, maxReturn: 2000 }],
-          codeSources: repo ? [isGit ? { type: 'git', url: repo, branch: 'main' } : { type: 'local', mountPath: repo }] : []
+          codeSources: repo ? [isGit ? { type: 'git', url: repo, branch: branch || 'main' } : { type: 'local', mountPath: repo, branch: branch || undefined }] : []
         })
       });
       closeNewProject();
@@ -412,10 +466,11 @@
   }
 
   async function deleteProject() {
+    if (!token) { $('loginModal').classList.add('show'); return; }
+    if (!PROJECT) { alert('当前没有可删除的项目'); return; }
     const opt = $('projectSel').selectedOptions[0];
-    const name = opt ? opt.textContent : PROJECT;
+    const name = (opt && opt.value === PROJECT) ? opt.textContent : PROJECT;
     if (!confirm('删除项目「' + name + '」及其全部分析记录？此操作不可恢复。')) return;
-    if (!confirm('再次确认：真的删除「' + name + '」？')) return;
     try {
       await api('/projects/' + PROJECT, { method: 'DELETE' });
       closeConfig();
@@ -423,10 +478,12 @@
       $('reportSection').style.display = 'none';
       $('reportCard').innerHTML = '';
       PROJECT = '';
-      await loadProjects();
+      localStorage.removeItem('ei.project');
+      const rest = await loadProjects();
       await loadConfig();
       loadHistory();
-    } catch (e) { setMsg('cfgMsg', e.message, false); }
+      if (!rest || !rest.length) { if (confirm('已删除最后一个项目，现在新建一个？')) openNewProject(); }
+    } catch (e) { alert('删除失败：' + e.message); }
   }
 
   async function loadConfig() {
@@ -449,7 +506,7 @@
       $('repoType').value = cs.type || 'git';
       $('repoUrl').value = cs.url || cs.mountPath || '';
       $('repoBranch').value = cs.branch || '';
-      if ($('curProjTag')) $('curProjTag').textContent = p.name;
+      setCurProjectUI(p);
     } catch (e) { /* 保留默认 */ }
     loadCredentialState();
   }
@@ -505,7 +562,8 @@
         const st = await api('/credentials/gitlab', { method: 'PUT', body: JSON.stringify({ value: tk }) });
         keyState('gitTokenState', st); $('gitToken').value = '';
       }
-      setMsg('cfgMsg', '已保存（模型配置对所有项目生效）', true);
+      setMsg('cfgMsg', '已保存（大模型对所有项目生效，日志源/仓库仅当前项目）', true);
+      await loadProjects();
     } catch (e) {
       setMsg('cfgMsg', e.message, false);
     } finally { btn.disabled = false; }
