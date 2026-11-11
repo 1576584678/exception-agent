@@ -106,6 +106,9 @@ class MemAnalysisRunRepository implements AnalysisRunRepository {
       .filter((r) => r.projectId === projectId)
       .map((v) => structuredClone(v));
   }
+  async delete(id: string) {
+    return this.store.delete(id);
+  }
 }
 
 class MemEvidenceRepository implements EvidenceRepository {
@@ -124,6 +127,13 @@ class MemEvidenceRepository implements EvidenceRepository {
   pruneExpired(now = Date.now()) {
     for (const [k, x] of this.store) if (x.expiresAt <= now) this.store.delete(k);
   }
+  async deleteByRun(runId: string) {
+    let n = 0;
+    for (const [k, x] of this.store) {
+      if (x.e.runId === runId) { this.store.delete(k); n++; }
+    }
+    return n;
+  }
 }
 
 class MemHypothesisRepository implements HypothesisRepository {
@@ -136,6 +146,13 @@ class MemHypothesisRepository implements HypothesisRepository {
     return [...this.store.values()]
       .filter((h) => h.runId === runId)
       .map((v) => structuredClone(v));
+  }
+  async deleteByRun(runId: string) {
+    let n = 0;
+    for (const [k, h] of this.store) {
+      if (h.runId === runId) { this.store.delete(k); n++; }
+    }
+    return n;
   }
 }
 
@@ -154,6 +171,13 @@ class MemFindingRepository implements FindingRepository {
       .filter((f) => f.runId === runId)
       .map((v) => structuredClone(v));
   }
+  async deleteByRun(runId: string) {
+    let n = 0;
+    for (const [k, f] of this.store) {
+      if (f.runId === runId) { this.store.delete(k); n++; }
+    }
+    return n;
+  }
 }
 
 class MemFeedbackRepository implements FeedbackRepository {
@@ -166,6 +190,13 @@ class MemFeedbackRepository implements FeedbackRepository {
     return [...this.store.values()]
       .filter((f) => f.runId === runId)
       .map((v) => structuredClone(v));
+  }
+  async deleteByRun(runId: string) {
+    let n = 0;
+    for (const [k, f] of this.store) {
+      if (f.runId === runId) { this.store.delete(k); n++; }
+    }
+    return n;
   }
 }
 

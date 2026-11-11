@@ -77,6 +77,32 @@ export async function analyzeRoutes(
     },
   );
 
+  // 删除分析任务：级联清除证据/假设/结论/反馈；审计仅记录动作（审计日志本身不可删改）
+  app.delete(
+    '/runs/:runId',
+    { preHandler: [authenticate] },
+    async (req, reply) => {
+      const runId = (req.params as { runId: string }).runId;
+      const run = await repos.runs.get(runId);
+      if (!run) return reply.code(404).send({ error: { code: 'NOT_FOUND', message: '分析任务不存在' } });
+      await assertProjectAccess(req, run.projectId, repos, audit);
+      await Promise.all([
+        repos.evidence.deleteByRun(runId),
+        repos.hypotheses.deleteByRun(runId),
+        repos.findings.deleteByRun(runId),
+        repos.feedback.deleteByRun(runId),
+      ]);
+      await repos.runs.delete(runId);
+      await audit.record({
+        actor: req.user!.employeeId,
+        projectId: run.projectId,
+        action: 'run_deleted',
+        detail: `删除分析任务 ${runId}`,
+      });
+      return reply.code(200).send({ deleted: true, runId });
+    },
+  );
+
   app.post(
     '/runs/:runId/feedback',
     { preHandler: [authenticate, requirePermission('feedback:mark')] },

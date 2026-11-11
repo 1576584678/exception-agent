@@ -29,28 +29,33 @@ export interface AnalysisRunRepository {
   get(id: string): Promise<AnalysisRun | undefined>;
   update(r: AnalysisRun): Promise<AnalysisRun>;
   listByProject(projectId: string): Promise<AnalysisRun[]>;
+  delete(id: string): Promise<boolean>;
 }
 
 export interface EvidenceRepository {
   add(e: Evidence, ttlDays?: number): Promise<Evidence>;
   listByRun(runId: string): Promise<Evidence[]>;
   pruneExpired(now?: number): void; // 对应 PRD FR-41 留存清理（MVP 内存版）
+  deleteByRun(runId: string): Promise<number>;
 }
 
 export interface HypothesisRepository {
   add(h: Hypothesis): Promise<Hypothesis>;
   listByRun(runId: string): Promise<Hypothesis[]>;
+  deleteByRun(runId: string): Promise<number>;
 }
 
 export interface FindingRepository {
   add(f: Finding): Promise<Finding>;
   get(id: string): Promise<Finding | undefined>;
   listByRun(runId: string): Promise<Finding[]>;
+  deleteByRun(runId: string): Promise<number>;
 }
 
 export interface FeedbackRepository {
   add(f: Feedback): Promise<Feedback>;
   listByRun(runId: string): Promise<Feedback[]>;
+  deleteByRun(runId: string): Promise<number>;
 }
 
 export interface AuditRepository {
