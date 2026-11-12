@@ -42,7 +42,8 @@ export async function analyzeRoutes(
       await assertProjectAccess(req, id, repos, audit);
       const parsed = analyzeSchema.safeParse(req.body);
       if (!parsed.success) throw new BadRequestError('INVALID_BODY', '分析请求校验失败', parsed.error.issues);
-      const run = await orchestrator.runAnalysis({
+      // 异步执行：立即返回 runId，前端轮询 GET /runs/:id 获取阶段进度与最终报告
+      const run = await orchestrator.startAnalysis({
         actor: req.user!.employeeId,
         projectId: id,
         inputType: parsed.data.inputType,
@@ -51,7 +52,7 @@ export async function analyzeRoutes(
         forceDegrade: parsed.data.forceDegrade,
       });
       await audit.access(req.user!.employeeId, id, 'analysis_submitted');
-      return reply.code(201).send(run);
+      return reply.code(202).send(run);
     },
   );
 
@@ -72,7 +73,8 @@ export async function analyzeRoutes(
       const run = await repos.runs.get((req.params as { runId: string }).runId);
       if (!run) return reply.code(404).send({ error: { code: 'NOT_FOUND', message: '分析任务不存在' } });
       await assertProjectAccess(req, run.projectId, repos, audit);
-      await audit.access(req.user!.employeeId, run.projectId, 'report_viewed');
+      // 只有已出报告的查看记审计；进度轮询（报告未生成）不刷审计日志
+      if (run.report) await audit.access(req.user!.employeeId, run.projectId, 'report_viewed');
       return run;
     },
   );

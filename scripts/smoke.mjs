@@ -22,18 +22,34 @@ async function main() {
   const noauth = await fetch(BASE + '/projects/demo-project-1/runs', { headers: {} });
   check('no token -> 401', noauth.status === 401);
 
+  // 分析已异步化：POST 202 立即返回 run，轮询 GET /runs/:id 到终态
+  async function submitAndPoll(body) {
+    const res = await fetch(BASE + body.path, {
+      method: 'POST',
+      headers: H,
+      body: JSON.stringify(body.payload),
+    });
+    const run = await res.json();
+    const accept = res.status === 202 || res.status === 201;
+    for (let i = 0; i < 120 && accept && !run.report; i++) {
+      await new Promise((r) => setTimeout(r, 500));
+      const cur = await fetch(BASE + '/runs/' + run.id, { headers: H });
+      if (cur.status !== 200) break;
+      Object.assign(run, await cur.json());
+    }
+    return { res, run };
+  }
+
   const occ = new Date().toISOString();
-  const az = await fetch(BASE + '/projects/demo-project-1/analyze', {
-    method: 'POST',
-    headers: H,
-    body: JSON.stringify({
+  const { res: az, run } = await submitAndPoll({
+    path: '/projects/demo-project-1/analyze',
+    payload: {
       inputType: 'text',
       inputRef: 'NullPointerException at OrderDetailService.java:128',
       supplemental: { occurredAt: occ },
-    }),
+    },
   });
-  const run = await az.json();
-  check('analyze 201', az.status === 201, 'status=' + run.status);
+  check('analyze 202 (async)', az.status === 202, 'status=' + run.status);
   check('report completed', run.report && run.report.status === 'completed', 'confidence=' + run.report?.confidence);
   check('evidence mounted', Array.isArray(run.report?.evidenceChain) && run.report.evidenceChain.length > 0);
   // stub 场景：不产出假代码位置/假数据查询，报告只含真实来源部分
@@ -65,13 +81,11 @@ async function main() {
   check('member cross-project -> 403', cross.status === 403);
 
   // 降级：日志源不可达 -> 部分完成（低置信）
-  const deg = await fetch(BASE + '/projects/demo-project-1/analyze', {
-    method: 'POST',
-    headers: H,
-    body: JSON.stringify({ inputType: 'text', inputRef: 'error', forceDegrade: 'log', supplemental: {} }),
+  const { res: deg, run: dr } = await submitAndPoll({
+    path: '/projects/demo-project-1/analyze',
+    payload: { inputType: 'text', inputRef: 'error', forceDegrade: 'log', supplemental: {} },
   });
-  const dr = await deg.json();
-  check('degrade(log) -> partial', deg.status === 201 && dr.status === 'partial', 'status=' + dr.status);
+  check('degrade(log) -> partial', deg.status === 202 && dr.status === 'partial', 'status=' + dr.status);
 
   // 配置生效：外部大模型 + HTTP 日志地址 + Git 仓库地址
   const createProj = await fetch(BASE + '/projects', {
@@ -98,23 +112,19 @@ async function main() {
   check('config persisted: git url', proj.codeSources?.[0]?.url === 'https://git.internal/repo2');
 
   // 依赖不可达 -> 真实适配器被启用且优雅降级为 partial（而非崩溃）
-  const az2 = await fetch(BASE + '/projects/' + proj.id + '/analyze', {
-    method: 'POST',
-    headers: H,
-    body: JSON.stringify({ inputType: 'text', inputRef: 'demo error', supplemental: { occurredAt: new Date().toISOString() } }),
+  const { res: az2, run: run2 } = await submitAndPoll({
+    path: '/projects/' + proj.id + '/analyze',
+    payload: { inputType: 'text', inputRef: 'demo error', supplemental: { occurredAt: new Date().toISOString() } },
   });
-  const run2 = await az2.json();
-  check('configured project analyze 201', az2.status === 201);
+  check('configured project analyze 202', az2.status === 202);
   check('unreachable deps -> partial (graceful)', run2.status === 'partial', 'status=' + run2.status);
 
   // 截图输入（image）走 OCR 占位链路
-  const img = await fetch(BASE + '/projects/demo-project-1/analyze', {
-    method: 'POST',
-    headers: H,
-    body: JSON.stringify({ inputType: 'image', inputRef: 'data:image/png;base64,AAAA', supplemental: { occurredAt: new Date().toISOString() } }),
+  const { res: img, run: ir } = await submitAndPoll({
+    path: '/projects/demo-project-1/analyze',
+    payload: { inputType: 'image', inputRef: 'data:image/png;base64,AAAA', supplemental: { occurredAt: new Date().toISOString() } },
   });
-  const ir = await img.json();
-  check('image input analyze 201', img.status === 201);
+  check('image input analyze 202', img.status === 202);
   check('image input report generated', !!ir.report, 'status=' + ir.status);
 
   // 清理：删除本次创建的项目，避免污染用户的项目列表

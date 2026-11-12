@@ -107,11 +107,19 @@ function extractJson(s: string): string {
   return ai >= 0 && aj > ai ? s.slice(ai, aj + 1) : s;
 }
 
+// 地址兼容：无论用户填 host:port / host:port/v1 / host:port/v1/chat/completions 都能正确请求
+export function normalizeChatCompletionsUrl(base: string): string {
+  const u = base.replace(/\/+$/, '');
+  if (/\/chat\/completions$/.test(u)) return u; // 已是完整路径，直接用
+  if (/\/v\d+$/.test(u)) return `${u}/chat/completions`; // 带 /v1，补后半段
+  return `${u}/v1/chat/completions`; // 只填了网关根地址，全自动补
+}
+
 export function createOpenAILLMAdapter(opts: RealLLMOptions): LLMAdapter {
   const stub = createStubLLMAdapter();
 
   async function call(system: string, user: string): Promise<string> {
-    const res = await fetch(`${opts.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+    const res = await fetch(normalizeChatCompletionsUrl(opts.baseUrl), {
       method: 'POST',
       headers: {
         'content-type': 'application/json',

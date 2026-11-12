@@ -43,6 +43,8 @@ export class AnalysisOrchestrator {
     } else {
       run.stages.push({ name, status, startedAt: now });
     }
+    // 阶段变化即落仓储，供前端轮询进度（仓储为克隆存储，必须显式 update）
+    void this.repos.runs.update(run).catch(() => {});
   }
 
   // Prompt 注入隔离（FR-38）：不可信内容包裹为数据块，不构成指令
@@ -62,14 +64,24 @@ export class AnalysisOrchestrator {
     };
   }
 
+  // 异步入口：立即返回已创建的 run，处理过程在后台执行，前端轮询 GET /runs/:id 看阶段进度
+  async startAnalysis(req: AnalyzeRequest): Promise<AnalysisRun> {
+    const run = await this.createRun(req);
+    void this.processRun(req, run).catch(() => {
+      /* processRun 内部已兜底，不会向外抛 */
+    });
+    return run;
+  }
+
+  // 同步入口（测试/脚本用）：等全部阶段完成再返回
   async runAnalysis(req: AnalyzeRequest): Promise<AnalysisRun> {
+    const run = await this.createRun(req);
+    return this.processRun(req, run);
+  }
+
+  private async createRun(req: AnalyzeRequest): Promise<AnalysisRun> {
     const project = await this.repos.projects.get(req.projectId);
     if (!project) throw new NotFoundError('项目不存在');
-
-    // 按配置选择适配器：大模型（全局设置优先）→ 日志源（项目）→ 代码源（项目）
-    const llm = selectLLMAdapter(project, getLLMSettings());
-    const logAdapter = selectLogAdapter(project.logSources[0]);
-    const codeAdapter = selectCodeAdapter(project.codeSources[0]);
 
     const runId = uuid();
     const run: AnalysisRun = {
@@ -85,6 +97,44 @@ export class AnalysisOrchestrator {
     };
     for (const n of ['parse', 'plan', 'collect', 'attribute', 'datacheck', 'report']) this.stage(run, n, 'pending');
     await this.repos.runs.create(run);
+    return run;
+  }
+
+  private async processRun(req: AnalyzeRequest, run: AnalysisRun): Promise<AnalysisRun> {
+    try {
+      return await this.processStages(req, run);
+    } catch (e) {
+      // 兜底：任何未预期的异常都转为 partial 报告，而不是让 run 永远卡在中间状态
+      run.report = {
+        runId: run.id,
+        conclusion: `分析过程出现异常：${(e as Error).message || e}`,
+        conclusionType: 'unknown',
+        confidence: 'low',
+        evidenceChain: [],
+        findings: [],
+        impact: '无（分析中断）',
+        suggestions: [],
+        unverified: [`分析中断：${(e as Error).message || e}`],
+        plan: run.plan ?? { keywords: [], timeWindow: { from: run.createdAt, to: run.createdAt }, sources: [], maxRows: 0, editable: true },
+        status: 'partial',
+      };
+      run.status = 'partial';
+      for (const s of run.stages) if (s.status === 'running') s.status = 'failed';
+      await this.repos.runs.update(run);
+      return run;
+    }
+  }
+
+  private async processStages(req: AnalyzeRequest, run: AnalysisRun): Promise<AnalysisRun> {
+    const project = await this.repos.projects.get(req.projectId);
+    if (!project) throw new NotFoundError('项目不存在');
+
+    // 按配置选择适配器：大模型（全局设置优先）→ 日志源（项目）→ 代码源（项目）
+    const llm = selectLLMAdapter(project, getLLMSettings());
+    const logAdapter = selectLogAdapter(project.logSources[0]);
+    const codeAdapter = selectCodeAdapter(project.codeSources[0]);
+
+    const runId = run.id;
 
     // 阶段1 解析与脱敏（闸1）
     this.stage(run, 'parse', 'running');
@@ -155,26 +205,32 @@ export class AnalysisOrchestrator {
       this.stage(run, 'attribute', 'skipped');
     } else {
       this.stage(run, 'attribute', 'running');
-      const located = await codeAdapter.locate({
-        errorText: run.parsedFields.errorText,
-        stack: run.parsedFields.stack,
-      });
-      const loc0 = located[0];
-      if (loc0) {
-        const blame = await codeAdapter.blame(loc0.file, loc0.line);
-        const commit = await codeAdapter.resolveCommitAt(req.supplemental.occurredAt);
-        codeLocation = {
-          file: loc0.file,
-          line: loc0.line,
-          snippet: loc0.snippet,
-          blame,
-          commitSha: commit.sha,
-          versionAligned: commit.versionAligned,
-        };
-        this.stage(run, 'attribute', 'done');
-      } else {
-        codeNote = '未能从输入中解析出候选代码位置（堆栈中无 文件:行号 信息）';
-        this.stage(run, 'attribute', 'done');
+      try {
+        const located = await codeAdapter.locate({
+          errorText: run.parsedFields.errorText,
+          stack: run.parsedFields.stack,
+        });
+        const loc0 = located[0];
+        if (loc0) {
+          const blame = await codeAdapter.blame(loc0.file, loc0.line);
+          const commit = await codeAdapter.resolveCommitAt(req.supplemental.occurredAt);
+          codeLocation = {
+            file: loc0.file,
+            line: loc0.line,
+            snippet: loc0.snippet,
+            blame,
+            commitSha: commit.sha,
+            versionAligned: commit.versionAligned,
+          };
+          this.stage(run, 'attribute', 'done');
+        } else {
+          codeNote = '未能从输入中解析出候选代码位置（堆栈中无 文件:行号 信息）';
+          this.stage(run, 'attribute', 'done');
+        }
+      } catch (e) {
+        // 代码定位失败（网络/token/仓库不支持等）不阻断报告，转说明
+        codeNote = `代码定位失败: ${(e as Error).message || e}`;
+        this.stage(run, 'attribute', 'failed');
       }
     }
     run.status = 'data_checking';

@@ -73,6 +73,11 @@ async function gitlabFetch(url: string): Promise<unknown> {
 
 export function createGitCodeSourceAdapter(cfg: CodeSource): CodeSourceAdapter {
   const stub = createStubCodeSourceAdapter();
+  // 明确的兼容性提示：GitHub/Gitee 等非 GitLab 仓库当前不支持（API 协议不同），提前给出可读错误而非静默失败
+  const nonGitlabHost = /(^|\.)(github\.com|gitee\.com|gitea\.com|gitcode\.com)$/i.test(
+    (() => { try { return new URL(cfg.url ?? '').hostname; } catch { return ''; } })(),
+  );
+  const unsupported = nonGitlabHost ? '当前版本仅支持 GitLab 仓库（检测到 GitHub/Gitee 等地址，其 API 协议不同）' : '';
   const { base, path } = resolveGitInfo(cfg);
   const ref = cfg.branch || 'main';
   const ready = Boolean(base && path && config.GITLAB_TOKEN);
@@ -80,13 +85,15 @@ export function createGitCodeSourceAdapter(cfg: CodeSource): CodeSourceAdapter {
   return {
     name: 'git-code',
     async locate({ errorText, stack }) {
+      if (unsupported) throw new Error(unsupported);
       // 优先从堆栈解析 “File.java:128”；真实代码搜索可后续补 GitLab search?scope=blobs
       const m = stack?.match(/([A-Za-z0-9_./-]+\.(?:java|ts|js|py|go|kt)):(\d+)/);
       if (m) return [{ file: m[1] as string, line: Number(m[2]) }];
       return stub.locate({ errorText, stack });
     },
     async blame(file, line) {
-      if (!ready) return stub.blame(file, line);
+      if (unsupported) throw new Error(unsupported);
+      if (!ready) throw new Error('GitLab 仓库已配置但缺少项目路径或访问 Token，请在「配置 → 代码仓库」补充');
       try {
         // GET /api/v4/projects/:id/repository/files/:file/blame?ref=:ref
         const url = `${base}/api/v4/projects/${encodeURIComponent(path)}/repository/files/${encodeURIComponent(file)}/blame?ref=${encodeURIComponent(ref)}`;
@@ -102,7 +109,7 @@ export function createGitCodeSourceAdapter(cfg: CodeSource): CodeSourceAdapter {
           start += len;
         }
         if (!commit) commit = ranges[0]?.commit;
-        if (!commit) return stub.blame(file, line);
+        if (!commit) throw new Error('GitLab blame 返回空结果');
         const sha = String(commit.id ?? '');
         return {
           shortSha: String(commit.short_id ?? sha.slice(0, 8)),
@@ -114,13 +121,13 @@ export function createGitCodeSourceAdapter(cfg: CodeSource): CodeSourceAdapter {
           isLastModifier: true,
           note: 'blame 仅表示最后修改者，不代表责任人',
         };
-      } catch {
-        // 网络/权限失败不影响整单：回退 stub（报告仍产出，标注为未验证）
-        return stub.blame(file, line);
+      } catch (e) {
+        // 网络/权限失败不产出假数据：抛错由编排器转成报告中的未验证说明
+        throw new Error(`GitLab blame 查询失败: ${(e as Error).message || e}`);
       }
     },
     async resolveCommitAt(time) {
-      if (!ready) return stub.resolveCommitAt(time);
+      if (!ready) return { sha: 'HEAD', versionAligned: Boolean(time) };
       try {
         const params = new URLSearchParams({ ref_name: ref, per_page: '1' });
         if (time) params.set('until', time);
@@ -128,7 +135,7 @@ export function createGitCodeSourceAdapter(cfg: CodeSource): CodeSourceAdapter {
         const arr = (await gitlabFetch(url)) as { id?: string }[];
         return { sha: arr[0]?.id ?? 'HEAD', versionAligned: Boolean(time) };
       } catch {
-        return stub.resolveCommitAt(time);
+        return { sha: 'HEAD', versionAligned: Boolean(time) };
       }
     },
   };

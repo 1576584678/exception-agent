@@ -71,7 +71,8 @@
   .rep-del:hover{color:var(--danger);border-color:#fecaca;background:#fef2f2}
   .hist-del{border:0;background:transparent;color:#c0c8d4;font-size:15px;width:24px;height:24px;border-radius:6px;cursor:pointer;line-height:1;flex-shrink:0}
   .hist-del:hover{color:var(--danger);background:#fef2f2}
-  .rep-concl{font-size:19px;font-weight:700;line-height:1.45;margin-bottom:12px;padding-right:110px}
+  .rep-concl{font-size:19px;font-weight:700;line-height:1.45;margin-bottom:12px;padding-right:100px}
+  @media(max-width:560px){.rep-concl{font-size:16px;padding-right:64px}.rep-del{top:12px;right:12px;padding:4px 9px;font-size:11px}}
   .rep-badges{display:flex;flex-wrap:wrap;gap:8px}
   .badge{font-size:11.5px;font-weight:600;padding:3px 10px;border-radius:999px;background:var(--surface-2);border:1px solid var(--border);color:var(--muted)}
   .badge.type{background:var(--primary-soft);border-color:#dcd8ff;color:var(--primary)}
@@ -157,6 +158,26 @@
   .modal-card h2{margin:0 0 16px;font-size:17px}
   .modal-card label.f{font-size:12px}
   @media(max-width:560px){.hero h1{font-size:24px}.workspace{padding:22px 14px 60px}.brand-text small{display:none}.topbar{padding:0 14px;gap:10px}}
+  @media(max-width:860px){.proj-label,.proj-branch{display:none!important}}
+  @media(max-width:700px){#openConfigBtn{display:none}.topbar .btn-ghost:not(.icon-btn):not(#openConfigBtn){padding:7px 10px;font-size:12px}}
+  /* 分析进度 */
+  .prog-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-md);padding:22px 24px}
+  .prog-title{font-size:15px;font-weight:700;display:flex;align-items:center;gap:10px;margin-bottom:18px}
+  .spinner{width:16px;height:16px;border:2.5px solid var(--primary-soft);border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .stage-list{display:flex;flex-direction:column;gap:0;margin:0;padding:0;list-style:none}
+  .stage-item{display:flex;align-items:center;gap:12px;padding:10px 2px;border-bottom:1px dashed var(--border)}
+  .stage-item:last-child{border-bottom:0}
+  .st-ic{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0}
+  .st-ic.pending{border:1.5px solid var(--border);color:#c0c8d4;background:transparent}
+  .st-ic.running{border:0;color:var(--primary);background:var(--primary-soft)}
+  .st-ic.done{border:0;color:#15803d;background:#dcfce7}
+  .st-ic.failed{border:0;color:#b91c1c;background:#fee2e2}
+  .st-ic.skipped{border:1.5px dashed #cbd5e1;color:#94a3b8;background:transparent}
+  .stage-name{font-size:13.5px;font-weight:600}
+  .stage-item.running .stage-name{color:var(--primary)}
+  .stage-name small{display:block;font-weight:400;font-size:11.5px;color:var(--muted);margin-top:1px}
+  .stage-dur{margin-left:auto;font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
 </style>
 </head>
 <body>
@@ -198,7 +219,7 @@
     <h1>输入报错，<span class="accent">快速定位</span>问题</h1>
     <p>粘贴报错日志 / 堆栈，或上传报错截图。平台结合日志、代码与数据，输出带可回溯证据的归因报告（代码位置、提交人、数据定位）。</p>
     <div class="input-card">
-      <textarea id="desc" placeholder="例如：订单详情页白屏，报 NullPointerException at OrderDetailService.java:128"></textarea>
+      <textarea id="desc" placeholder="例如：订单详情页白屏，报 NullPointerException at OrderDetailService.java:128&#10;（Ctrl+Enter 快速提交）" onkeydown="if(event.ctrlKey&&event.key==='Enter')analyze()"></textarea>
       <div class="input-toolbar">
         <label class="upload">上传截图<input type="file" id="img" accept="image/*" onchange="previewImg(event)" /></label>
         <span class="grow"></span>
@@ -230,6 +251,13 @@
   </div>
   <div class="drawer-body">
     <div class="field-group">
+      <div class="field-group-title"><span class="idx">0</span> 基本信息 <span class="tag-proj curProjName">当前项目</span></div>
+      <label class="f">项目名称</label>
+      <input class="f" id="projName" placeholder="项目名" />
+      <label class="f">环境</label>
+      <select class="f" id="projEnv"><option value="prod">生产 prod</option><option value="staging">预发 staging</option></select>
+    </div>
+    <div class="field-group">
       <div class="field-group-title"><span class="idx">1</span> 大模型 <span class="tag-global">全局 · 所有项目共用</span></div>
       <label class="f">模式</label>
       <select class="f" id="modelPolicy">
@@ -237,7 +265,7 @@
         <option value="external">外部大模型（OpenAI 兼容）</option>
       </select>
       <label class="f">模型地址</label>
-      <input class="f" id="llmBase" placeholder="http://x.x.x.x:port/v1" />
+      <input class="f" id="llmBase" placeholder="http://host:port（/v1 可省略，自动补全）" />
       <label class="f">模型名</label>
       <input class="f" id="llmModel" placeholder="如 qwen2.5-72b" />
       <label class="f">推理强度（reasoning 模型）</label>
@@ -269,7 +297,7 @@
         <option value="local">本地目录</option>
       </select>
       <label class="f">地址 / 目录</label>
-      <input class="f" id="repoUrl" placeholder="Git 地址 或 本地目录路径" />
+      <input class="f" id="repoUrl" placeholder="GitLab 仓库地址 或 本地目录路径（当前仅支持 GitLab）" />
       <label class="f">分支</label>
       <input class="f" id="repoBranch" placeholder="默认 main（用于 blame / 文件读取）" />
       <label class="f">访问 Token <span class="key-state" id="gitTokenState">未配置</span></label>
@@ -296,7 +324,7 @@
     <label class="f">日志源地址（必填）</label>
     <input class="f" id="npLog" placeholder="http://192.168.x.x:9428/select/logsql/query" />
     <label class="f">代码仓库地址（可选）</label>
-    <input class="f" id="npRepo" placeholder="Git 地址 或 本地目录，如 http://git.internal/aigit/repo" />
+    <input class="f" id="npRepo" placeholder="GitLab 地址 或 本地目录" />
     <label class="f">分支（可选，默认 main）</label>
     <input class="f" id="npBranch" placeholder="main" />
     <p class="muted" style="font-size:11.5px;margin:6px 2px 0">分支用于代码定位：读该分支的文件做 blame / 提交人追溯。仓库可留空，只做日志归因。</p>
@@ -428,7 +456,13 @@
   function openNewProject() {
     closeProjMenu();
     if (!token) { $('loginModal').classList.add('show'); return; }
-    $('npName').value = ''; $('npLog').value = ''; $('npRepo').value = ''; $('npBranch').value = '';
+    // 预填上次输入（同环境多项目场景省得重复手填）
+    let last = {};
+    try { last = JSON.parse(localStorage.getItem('ei.np') || '{}') || {}; } catch (e) { last = {}; }
+    $('npName').value = '';
+    $('npLog').value = last.log || '';
+    $('npRepo').value = last.repo || '';
+    $('npBranch').value = last.branch || '';
     $('npMsg').textContent = '';
     $('newProjectModal').classList.add('show');
     setTimeout(function () { $('npName').focus(); }, 60);
@@ -444,6 +478,7 @@
     try {
       const repo = val('npRepo');
       const branch = val('npBranch');
+      localStorage.setItem('ei.np', JSON.stringify({ log: val('npLog'), repo: repo, branch: branch }));
       const isGit = /^https?:\/\//i.test(repo);
       const p = await api('/projects', {
         method: 'POST',
@@ -506,6 +541,8 @@
       $('repoType').value = cs.type || 'git';
       $('repoUrl').value = cs.url || cs.mountPath || '';
       $('repoBranch').value = cs.branch || '';
+      $('projName').value = p.name || '';
+      $('projEnv').value = p.env || 'staging';
       setCurProjectUI(p);
     } catch (e) { /* 保留默认 */ }
     loadCredentialState();
@@ -539,8 +576,10 @@
         })
       });
 
-      // 2) 当前项目的日志源 / 代码仓库
+      // 2) 当前项目的名称/环境 + 日志源 / 代码仓库
       const body = {
+        ...(val('projName') ? { name: val('projName') } : {}),
+        env: val('projEnv'),
         logSources: [{ kind: val('logKind'), endpoint: val('logEndpoint') || undefined, supportsTraceId: true, maxReturn: 2000 }],
         codeSources: [{
           type: val('repoType'),
@@ -578,9 +617,58 @@
     reader.readAsDataURL(f);
   }
 
+  // ===== 分析：异步提交 + 阶段进度轮询 =====
+  const STAGE_META = {
+    parse: ['输入解析', '报错文本脱敏与结构化'],
+    plan: ['检索计划', '大模型生成关键词与时间窗'],
+    collect: ['日志采集', '从日志源拉取相关日志'],
+    attribute: ['代码归因', '定位代码位置与提交人'],
+    datacheck: ['数据核查', '核对相关业务数据'],
+    report: ['生成报告', '汇总证据生成结论'],
+  };
+  let polling = false;
+
+  function renderProgress(run) {
+    const total = (run.stages || []).length;
+    const doneN = (run.stages || []).filter(function (s) { return s.status === 'done' || s.status === 'skipped'; }).length;
+    let html = '<div class="prog-card"><div class="prog-title"><span class="spinner"></span>分析中 ' + doneN + '/' + (total || 6) + '</div><ul class="stage-list">';
+    (run.stages || []).forEach(function (s) {
+      const meta = STAGE_META[s.name] || [s.name, ''];
+      const cls = s.status;
+      const ic = s.status === 'done' ? '✓' : s.status === 'failed' ? '✕' : s.status === 'skipped' ? '–' : s.status === 'running' ? '' : '';
+      html += '<li class="stage-item ' + cls + '">'
+        + '<span class="st-ic ' + cls + '">' + (s.status === 'running' ? '<span class="spinner" style="width:11px;height:11px;border-width:2px"></span>' : ic) + '</span>'
+        + '<span class="stage-name">' + meta[0] + '<small>' + meta[1] + '</small></span>'
+        + '<span class="stage-dur">' + (s.status !== 'skipped' && s.durationMs != null ? (s.durationMs + ' ms') : '') + '</span>'
+        + '</li>';
+    });
+    html += '</ul></div>';
+    $('reportCard').innerHTML = html;
+    $('reportSection').style.display = 'block';
+  }
+
+  async function pollRun(runId) {
+    polling = true;
+    try {
+      const run = await api('/runs/' + runId);
+      if (run.report) {
+        polling = false;
+        renderReport(run);
+        loadHistory();
+        return;
+      }
+      renderProgress(run);
+      setTimeout(function () { pollRun(runId); }, 1000);
+    } catch (e) {
+      polling = false;
+      setMsg('anaMsg', e.message, false);
+    }
+  }
+
   async function analyze() {
     if (!token) { $('loginModal').classList.add('show'); return; }
-    const btn = $('analyzeBtn'); btn.disabled = true; setMsg('anaMsg', '分析中…', true);
+    if (polling) { setMsg('anaMsg', '当前分析还在进行中…', false); return; }
+    const btn = $('analyzeBtn'); btn.disabled = true; setMsg('anaMsg', '', true);
     try {
       const desc = val('desc');
       if (!desc && !imgData) { setMsg('anaMsg', '请输入报错信息或上传截图', false); btn.disabled = false; return; }
@@ -588,9 +676,9 @@
         method: 'POST',
         body: JSON.stringify({ inputType: imgData ? 'image' : 'text', inputRef: imgData || desc, supplemental: {} })
       });
-      setMsg('anaMsg', '完成', true);
-      renderReport(run);
-      loadHistory();
+      setMsg('anaMsg', '', true);
+      renderProgress(run);
+      pollRun(run.id);
     } catch (e) {
       setMsg('anaMsg', e.message, false);
     } finally { btn.disabled = false; }
@@ -624,6 +712,11 @@
   async function viewRun(runId) {
     try {
       const run = await api('/runs/' + runId);
+      if (!run.report) { // 尚未出报告（进行中）→ 展示进度并继续轮询
+        renderProgress(run);
+        pollRun(runId);
+        return;
+      }
       renderReport(run);
     } catch (e) { setMsg('anaMsg', e.message, false); }
   }
