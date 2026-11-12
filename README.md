@@ -1,151 +1,127 @@
-# 异常分析平台（Exception Insight）
+# Exception Insight · 异常分析平台
 
-把「截图 / 报错描述 → 原因 → 代码位置 + 最后修改提交 + 具体数据」这条线上问题定位链路，做成**一次提交、一份报告**。
+> 粘贴一段报错，自动从日志平台捞出相关日志，定位到代码行与最近提交人，输出一份**带可回溯证据的归因报告**。
 
-## 产品简介
+![主界面（浅色）](docs/screenshots/home.png)
 
-线上问题定位今天依赖「人找人」：客诉截图发群里 → 猜是哪个服务 → 去日志平台手搜 → 翻 GitLab 代码 → 查 DB。一次定位平均跨 3 个系统、问 2 个人。
+> 左：粘贴报错一键分析　中：配置抽屉（模型 / 日志源 / 代码仓库均可配置）　右：深色模式
 
-Exception Insight 的目标是把这条链路压缩为一次提交、一份带可点击证据的报告。平台只给**排查建议**，不做自动修复、不改代码、不改数据。
+| 配置抽屉 | 深色模式 |
+| --- | --- |
+| ![配置抽屉](docs/screenshots/config.png) | ![深色模式](docs/screenshots/dark.png) |
 
-核心指标（PRD §2.2）：MTTA P50 ≤ 90s、Top-1 归因采纳率 ≥ 60%、证据挂载率 100%、越权 / 泄露事件 0。
+## 它解决什么
 
-## 当前状态
+线上排障现在靠「人找人」：客诉截图发群里 → 猜是哪个服务 → 登日志平台手搜 → 翻仓库找 `file:line` → 手动 blame → 查库。一次定位常跨 3 个系统、问 2 个人，结论还只留在群聊里。
 
-- **PRD**：v1.0 已定稿（`docs/异常分析平台-PRD-v1.0.md`）。
-- **实现**：端到端 MVP 可运行，包含单页工作台（配置抽屉、报告渲染、证据链折叠、记录删除）。
-- **技术栈**：Node.js 18+ / TypeScript / Fastify；开发期内存仓储 + 项目配置落盘（`data/projects.json`）；LLM / 日志 / 代码 / 数据均为可替换适配器。
-- **已接入真实系统**：OpenAI 兼容大模型（如 DeepSeek）、VictoriaLogs（LogsQL）、GitLab 只读 API。
-- **尚未包含**：真实只读数据库查询、本地目录代码定位、截图 OCR、PostgreSQL 持久化、凭证外部引用（Vault/KMS）。报告中对使用 stub 的部分会显式标注「演示占位」。
+| | 传统排查 | Exception Insight |
+| --- | --- | --- |
+| 入口 | 群里问人 | 粘贴报错文本或上传截图 |
+| 找日志 | 手登平台搜关键词 | 按时间窗 + 关键词自动拉取，ERROR/WARN 优先 |
+| 定位代码 | 翻仓库、手动 blame | 解析堆栈 → GitLab / GitHub 提交追溯 |
+| 结论 | 口头结论，无留痕 | 一份报告：结论 / 证据链 / 影响面 / 建议 / 未验证项 |
 
-## 技术栈与架构
+平台**只给排查建议**，不自动修复、不改代码、不改数据。
 
-- 后端：Fastify + TypeScript + Zod（边界校验）+ Pino（结构化日志）+ @fastify/jwt。
-- 分层：`routes`（控制器，无业务逻辑）→ `services`（业务编排）→ `repositories`（数据访问，接口化）→ `adapters`（外部系统，接口化 + stub）。
-- 存储：默认内存仓储（`STORAGE=memory`，重启清空，符合 MVP 骨架）；审计日志不可删改、证据按 TTL 清理已在内存层实现，接 PG 时业务层零改动。
-- 安全：脱敏三闸、审计 append-only、JWT + RBAC、Prompt 注入隔离，均按 PRD 安全基线落地。
+## 30 秒跑起来
 
-## 快速开始
+**方式 A：直接用发布包**（不想装依赖时最省事）
 
-### 开发模式
+从 [GitHub Releases](https://github.com/1576584678/exception-agent/releases) 下载 `exception-insight.zip`，解压后：
 
-```bash
-npm install
-cp .env.example .env          # 已提供开发用 .env，可直接用
-npm run dev                   # tsx watch，默认 :3000
-npm run typecheck             # 类型检查
-npm run smoke                 # 端到端冒烟（需先启动服务）
-```
-
-种子账号：管理员 `1001 / dev123`（platform_admin）、开发 `2002 / dev123`（member，无项目归属用于演示越权）。示例项目固定 id：`demo-project-1`。
-
-### 生产模式（编译后运行）
-
-```bash
-npm ci --omit=dev             # 或用 npm install
-npm run build                 # tsc → dist/
-JWT_SECRET=$(openssl rand -hex 32) npm start
-```
-
-> `JWT_SECRET` 必填且至少 16 字符，否则启动即退出（fail-fast）。端口用 `PORT` 覆盖，默认 3000。
-
-### 一键启动脚本
-
-- Windows：双击 `start.bat`（自动生成 `.env` 与随机 `JWT_SECRET`、缺依赖自动装、缺 `dist` 自动编译）
+- Windows：双击 `start.bat`
 - Linux / macOS：`chmod +x start.sh && ./start.sh`
 
-### Docker
+浏览器打开 `http://localhost:3000`，用 `1001 / dev123` 登录。首次启动自动生成 `.env` 和随机 `JWT_SECRET`，包内不含任何密钥。
+
+**方式 B：源码运行**（Node.js 18+）
 
 ```bash
-export JWT_SECRET=$(openssl rand -hex 32)
-docker compose up -d --build
-# 或
-docker build -t exception-insight:0.1.0 .
-docker run -d -p 3000:3000 -e JWT_SECRET=$JWT_SECRET -v $(pwd)/data:/app/data exception-insight:0.1.0
+git clone https://github.com/1576584678/exception-agent.git
+cd exception-agent
+npm ci && npm run build
+cp .env.example .env
+# 把 .env 里的 JWT_SECRET 换成随机值（至少 16 字符）
+npm start
 ```
 
-`data/` 卷用于持久化项目配置；`.env` 不打进镜像，密钥一律走运行时环境变量。
+打开页面后，右上角「配置」里填一次：大模型（全局，所有项目共用）、日志源和代码仓库（每个项目独立）。之后每次只需输入报错信息即可分析。
 
-### 打包分发给别人
+## 界面
+
+| 配置（全局模型 + 按项目日志源/仓库） | 分析进度（异步，六阶段实时反馈） |
+| --- | --- |
+| ![配置](docs/screenshots/config.png) | ![进度](docs/screenshots/progress.png) |
+
+深色模式在顶栏 🌙/☀️ 切换；报告证据链默认收起、分页展开；历史记录与项目都能删除。
+
+## 能接什么
+
+| 能力 | 支持 | 说明 |
+| --- | --- | --- |
+| 大模型 | OpenAI 兼容网关 | 任意 `host:port` / `/v1` / 完整 `/chat/completions` 地址，自动补全路径；支持 `reasoning_effort`；不配则用本地 stub |
+| 日志源 | VictoriaLogs / Elasticsearch / Loki / 通用 HTTP | 按地址自动识别，无需手选类型；关键词 0 命中自动兜底 ERROR/WARN |
+| 代码仓库 | GitLab / GitHub | 堆栈解析 `file:line`；GitLab 走 blame API，GitHub 用「该文件最近一次提交」近似并如实标注边界 |
+| 多项目 | 支持 | 全局模型一份，项目配置多份；顶栏切换、可改名/改分支/删除 |
+| 业务数据 | 模板化只读（当前为 stub） | 白名单 + 列黑名单校验；未接真实数据源时该阶段直接跳过，不产出假数据 |
+
+密钥只写服务端 `.env`、不落库、只回传掩码；凭证、日志、代码全程只读。
+
+## 边界与当前状态（不夸大）
+
+这是一个**自用阶段的 MVP**，适合内网试用和二次开发，不建议直接上生产或暴露公网：
+
+- 分析记录存内存，重启清空（项目配置已落盘 `data/projects.json`）
+- 默认账号 `1001 / dev123` 为演示用，无多租户、无注册/改密
+- 依赖存在未修复的安全告警（含 1 个 critical），正式部署前需升级 Fastify 大版本
+- 尚未实现：截图 OCR 接视觉模型、真实只读数据库查询、本地目录代码定位、PostgreSQL 持久化、Vault/KMS 凭证引用
+
+**零假数据**：日志/代码/数据适配器处于 stub 时，对应阶段直接 `skipped`，报告不含占位的代码位置或数据查询结果；失败原因写入「未验证项」。
+
+## 开发
 
 ```bash
-npm run pack
+npm run dev          # tsx watch，:3000
+npm run typecheck    # 类型检查
+npm run smoke        # 端到端冒烟 22 项（需先启动服务）
+npm run pack         # 生成 release/exception-insight.zip
 ```
 
-生成 `release/exception-insight.zip`（约 5–10 MB，含编译产物 + 生产依赖 + 启动脚本）。对方机器只需：
+架构：`routes → services → repositories → adapters`，四类外部系统均为接口 + 可替换实现，按项目配置动态选择。完整设计见 `docs/异常分析平台-PRD-v1.0.md`，AI 协作约定见 `AGENTS.md`。
 
-1. 安装 Node.js 18+（https://nodejs.org）
-2. 解压 zip
-3. 双击 `start.bat`（Windows）或执行 `./start.sh`
-4. 浏览器打开 http://localhost:3000，用 `1001 / dev123` 登录
+## API 端点
 
-首次启动会自动生成 `.env`（含随机 JWT_SECRET）。之后在页面右上角「配置」里填模型地址 / 模型 Key / 日志源 / 代码仓库即可。
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/auth/login` | 登录获取 JWT |
+| GET | `/health`、`/ready` | 健康检查 |
+| GET / POST / DELETE | `/projects`、`/projects/:id` | 项目列表 / 创建 / 详情 / 更新 / 删除 |
+| GET / PUT | `/settings`、`/settings/llm` | 全局大模型配置 |
+| GET / PUT | `/credentials`、`/credentials/{llm,gitlab,github}` | 凭证状态（掩码）/ 保存密钥 |
+| POST | `/projects/:id/analyze` | 提交分析，**202 立即返回 runId** |
+| GET | `/runs/:runId` | 轮询阶段进度 / 获取最终报告 |
+| GET / DELETE | `/projects/:id/runs`、`/runs/:runId` | 历史列表 / 删除记录 |
+| POST | `/runs/:runId/feedback` | 结论反馈 |
+| GET | `/audit` | 审计日志 |
 
-### 发给同事前的注意事项
+分析为异步：POST 返回后前端每秒轮询 `GET /runs/:runId` 展示六个阶段（解析 → 检索计划 → 日志采集 → 代码归因 → 数据核查 → 生成报告）的状态与耗时，出报告后自动渲染。
 
-- **包内不含任何密钥和本机配置**：只有 `.env.example`（值为空）、`data/` 空目录；`.env`、`data/projects.json`、`data/settings.json` 均不会打包。
-- **默认账号 `1001 / dev123` 仅用于内网试用**，不要暴露到公网；如需改账号请改源码种子用户后重新构建。
-- **默认自带一个「示例电商后端」演示项目**，其中的日志地址/仓库地址只是示例占位，请在「配置」里改成自己的，或直接用「+ 新建项目」创建（顶栏 ⋯ 菜单里可删除不需要的项目）。
-- 日志源按地址自动识别：VictoriaLogs（`:9428` / `vmui` / `logsql`）、Elasticsearch（`:9200` / `_search`）、Loki（`:3100` / `loki`），其他 HTTP 地址走通用查询接口；仓库支持 GitLab 与 GitHub（GitHub 需在配置页保存 PAT）。
-- 端口冲突（默认 3000）时改 `.env` 里的 `PORT` 再重启；页面右上角 🌙/☀️ 可切深色模式。
+## 分发给别人
 
-> 若对方环境无法访问 npm registry，`release/` 里已包含 `node_modules`，可直接运行。
+`npm run pack` 生成 `release/exception-insight.zip`（含编译产物、生产依赖、启动脚本）。包内**不含** `.env`、`data/*.json` 或任何密钥。
 
-## API 端点（已落地）
+- 默认账号仅内网试用；端口冲突改 `.env` 的 `PORT`
+- 示例项目里的日志/仓库地址是占位，请在配置里改成自己的，或新建项目
+- GitHub 仓库需在配置页保存 PAT；GitLab 需 `read_api` token
 
-| 方法 | 路径 | 权限 | 说明 |
-| --- | --- | --- | --- |
-| POST | `/auth/login` | 公开 | 登录获取 JWT |
-| GET | `/me` | 登录 | 当前用户 |
-| GET | `/health`、`/ready` | 公开 | 健康检查 |
-| GET/POST | `/projects` | project:configure / project:create | M1 项目配置（FR-01） |
-| GET/PUT | `/projects/:id` | project:configure | 项目详情 / 更新配置 |
-| POST | `/projects/:id/analyze` | analysis:submit | 提交分析（M2–M6 主链路） |
-| GET | `/projects/:id/runs` | 本项目成员 | 分析任务列表 |
-| GET | `/runs/:runId` | 本项目成员 | 获取报告 |
-| DELETE | `/runs/:runId` | 本项目成员 | 删除分析记录（级联清除证据） |
-| POST | `/runs/:runId/feedback` | feedback:mark | 结论反馈（FR-33） |
-| GET | `/credentials` | 登录 | 凭证状态（仅掩码） |
-| PUT | `/credentials/llm`、`/credentials/gitlab` | project:configure | 保存密钥（写 .env，不落库） |
-| GET | `/audit` | audit:view | 审计日志（FR-40） |
+## 安全红线
 
-## 配置大模型 / 日志 / Git（配置真正生效）
+凭证不落库明文、外部系统只读 + 白名单、三道脱敏、模型输出不执行、文件读取限定仓库、审计不可删改、Prompt 注入隔离、数据查询模板化。详见 `AGENTS.md`。
 
-通过 `POST /projects` 创建项目时配置，分析时由编排器**按项目配置自动选择适配器**：
+## License
 
-```bash
-curl -X POST http://localhost:3000/projects \
-  -H "authorization: Bearer <token>" -H "content-type: application/json" \
-  -d '{
-    "name": "订单服务",
-    "env": "prod",
-    "codeSources": [{ "type": "git", "url": "https://gitlab.internal/order", "branch": "main", "credentialRefId": "cred-git-1" }],
-    "logSources": [{ "kind": "platform", "endpoint": "https://log.internal/api/query", "timeField": "@timestamp", "supportsTraceId": true, "maxReturn": 2000 }],
-    "dataSources": [{ "dbType": "mysql", "credentialRefId": "cred-db-1", "tableWhitelist": ["order"], "columnBlacklist": ["password"], "rowLimit": 20, "timeoutMs": 5000 }],
-    "modelPolicy": "external",
-    "llmConfig": { "baseUrl": "https://llm.internal/v1", "model": "qwen2.5-72b" }
-  }'
-```
-
-- `modelPolicy: "local"` → 内置 stub（无需外部模型）；`"external"` → 调 `llmConfig.baseUrl`（或 env `LLM_BASE_URL`），`apiKey` 走 env `LLM_API_KEY` 或 `apiKeyRef` 引用（禁止明文）。
-- `logSources[].endpoint` 填 http(s) 地址 → 启用真实 HTTP 日志拉取；否则内置 stub。
-- `codeSources[]` 填 git 类型 + url → 启用 Git 适配器（解析堆栈定位；blame 接真实 GitLab API 为后续）。
-- 依赖不可达时自动**阶段级降级**（如日志不可达 → partial + 低置信），不整单失败。
-
-## 安全红线（硬约束，不可绕过）
-
-1. 凭证只存外部引用，禁止明文。2. Git/日志/DB 统一只读 + 表白名单/列黑名单。3. 三道脱敏闸全程生效。4. 模型输出禁止直接执行为工具调用。5. 文件读取限定仓库内。6. 审计不可删改、跨项目 403。7. Prompt 注入隔离。8. 数据定位走模板化只读查询。完整说明见 `AGENTS.md`。
-
-## 已实现 vs 待实现（对照 PRD）
-
-**已实现**：分层架构；配置集中校验 + 结构化日志 + 类型化错误；JWT+RBAC；脱敏三闸（采集/入模/出报告）；审计 append-only；分析编排器 + 状态机（PRD §9.1）+ 阶段级降级（FR-42）；真实 OpenAI 兼容 LLM / VictoriaLogs / GitLab 代码源适配器（按项目配置自动选择）；截图 / 报错描述双输入（截图 OCR 为占位）；项目配置持久化；单页工作台（配置抽屉、报告折叠、证据分页、记录删除、演示占位标注）；端到端冒烟 21 项全 PASS。
-
-**待实现（按 PRD 演进）**：真实只读数据库查询（当前白名单校验 + stub 数据，报告已标注「演示」）；本地目录代码定位（`type=local` 目前走 stub）；截图 OCR 接入视觉模型；PostgreSQL 持久化分析记录（`STORAGE=pg` + 迁移）；凭证外部引用服务（Vault/KMS）；并发队列、后台续跑、人工接管（FR-43/44）；V2+ 多项目联合、前端 SourceMap 反解等。
-
-## 给 AI 协作伙伴
-
-涉及模型调用、工具执行、凭证、脱敏、审计、文件读取、数据查询的改动，务必先读 `AGENTS.md` 的「安全红线」一节再动手。
+[MIT](LICENSE) © 2026 Exception Insight contributors
 
 ---
 
-**合规声明**：本仓库文档为产品设计参考，具体实施请结合公司合规与法务要求确认。文档与代码中的示例人物、工号、订单号与数据均为虚构，仅用于说明。
+文档与代码中的示例人物、工号、订单号与数据均为虚构，仅用于说明。
