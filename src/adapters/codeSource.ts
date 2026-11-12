@@ -73,11 +73,11 @@ async function gitlabFetch(url: string): Promise<unknown> {
 
 export function createGitCodeSourceAdapter(cfg: CodeSource): CodeSourceAdapter {
   const stub = createStubCodeSourceAdapter();
-  // 明确的兼容性提示：GitHub/Gitee 等非 GitLab 仓库当前不支持（API 协议不同），提前给出可读错误而非静默失败
-  const nonGitlabHost = /(^|\.)(github\.com|gitee\.com|gitea\.com|gitcode\.com)$/i.test(
+  // 明确的兼容性提示：Gitee/Gitea 等非 GitLab/GitHub 平台暂不支持，提前给出可读错误而非静默失败
+  const nonGitlabHost = /(^|\.)(gitee\.com|gitea\.com|gitcode\.com)$/i.test(
     (() => { try { return new URL(cfg.url ?? '').hostname; } catch { return ''; } })(),
   );
-  const unsupported = nonGitlabHost ? '当前版本仅支持 GitLab 仓库（检测到 GitHub/Gitee 等地址，其 API 协议不同）' : '';
+  const unsupported = nonGitlabHost ? '当前版本仅支持 GitLab 与 GitHub 仓库（检测到 Gitee/Gitea 等地址，其 API 协议不同）' : '';
   const { base, path } = resolveGitInfo(cfg);
   const ref = cfg.branch || 'main';
   const ready = Boolean(base && path && config.GITLAB_TOKEN);
@@ -141,8 +141,96 @@ export function createGitCodeSourceAdapter(cfg: CodeSource): CodeSourceAdapter {
   };
 }
 
-// 选择器：配置了 git 类型且带 http(s) 仓库地址 → 真实 Git 适配器；否则 stub
+// ===== GitHub 适配器（REST API v3）=====
+// GitHub 无 blame API：用「该文件最近一次提交」近似最后修改者，并在报告中如实标注
+function githubHostOf(url?: string): string {
+  try { return new URL(url ?? '').hostname.toLowerCase(); } catch { return ''; }
+}
+
+export function isGitHubRepo(url?: string): boolean {
+  const h = githubHostOf(url);
+  return h === 'github.com' || h.endsWith('.github.com');
+}
+
+async function githubFetch(url: string): Promise<unknown> {
+  const token = config.GITHUB_TOKEN;
+  const res = await fetch(url, {
+    headers: {
+      accept: 'application/vnd.github+json',
+      'x-github-api-version': '2022-11-28',
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!res.ok) {
+    const detail = (await res.text()).slice(0, 200);
+    throw new Error(`GitHub HTTP ${res.status}${detail ? `: ${detail}` : ''}`);
+  }
+  return res.json();
+}
+
+export function createGitHubCodeSourceAdapter(cfg: CodeSource): CodeSourceAdapter {
+  const stub = createStubCodeSourceAdapter();
+  // owner/repo 从 URL 解析：https://github.com/<owner>/<repo>
+  let owner = '';
+  let repo = '';
+  try {
+    const u = new URL(cfg.url ?? '');
+    const seg = u.pathname.replace(/^\/+/, '').replace(/\.git$/, '').split('/');
+    owner = seg[0] ?? '';
+    repo = (seg[1] ?? '').replace(/\/+$/, '');
+  } catch { /* url 无效时由 ready 拦截 */ }
+  const ref = cfg.branch || 'main';
+  const ready = Boolean(owner && repo);
+  const api = 'https://api.github.com/repos/' + `${owner}/${repo}`;
+  const page = 'https://github.com/' + `${owner}/${repo}`;
+
+  return {
+    name: 'github-code',
+    async locate({ errorText, stack }) {
+      const m = stack?.match(/([A-Za-z0-9_./-]+\.(?:java|ts|js|py|go|kt)):(\d+)/);
+      if (m) return [{ file: m[1] as string, line: Number(m[2]) }];
+      return stub.locate({ errorText, stack });
+    },
+    async blame(file, line) {
+      if (!ready) throw new Error('GitHub 仓库地址不合法（应为 https://github.com/owner/repo）');
+      // 最近一次改动该文件的提交 ≈ 最后修改者（GitHub 无逐行 blame API）
+      const arr = (await githubFetch(`${api}/commits?path=${encodeURIComponent(file)}&sha=${encodeURIComponent(ref)}&per_page=1`)) as {
+        sha?: string;
+        commit?: { author?: { name?: string; date?: string }; message?: string };
+      }[];
+      const c = arr[0];
+      if (!c?.sha) throw new Error('GitHub 未返回该文件的提交记录（文件可能不存在或分支不对）');
+      return {
+        shortSha: c.sha.slice(0, 8),
+        authorName: c.commit?.author?.name ?? '未知',
+        authorEmployeeId: '',
+        committedAt: c.commit?.author?.date ?? '',
+        message: String(c.commit?.message ?? '').split('\n')[0] || '（无提交信息）',
+        commitUrl: `${page}/commit/${c.sha}`,
+        isLastModifier: true,
+        note: 'GitHub 无逐行 blame API，此处为该文件最近一次提交的作者（最后修改该文件的人），不代表该行的责任人',
+      };
+    },
+    async resolveCommitAt(time) {
+      if (!ready) return { sha: 'HEAD', versionAligned: Boolean(time) };
+      try {
+        const params = new URLSearchParams({ sha: ref, per_page: '1' });
+        if (time) params.set('until', time);
+        const arr = (await githubFetch(`${api}/commits?${params.toString()}`)) as { sha?: string }[];
+        return { sha: arr[0]?.sha ?? 'HEAD', versionAligned: Boolean(time) };
+      } catch {
+        return { sha: 'HEAD', versionAligned: Boolean(time) };
+      }
+    },
+  };
+}
+
+// 选择器：配置了 git 类型且带 http(s) 仓库地址 → 按托管平台分 GitLab / GitHub；否则 stub
 export function selectCodeAdapter(cfg?: CodeSource): CodeSourceAdapter {
-  if (cfg?.type === 'git' && cfg.url && /^https?:\/\//i.test(cfg.url)) return createGitCodeSourceAdapter(cfg);
+  if (cfg?.type === 'git' && cfg.url && /^https?:\/\//i.test(cfg.url)) {
+    if (isGitHubRepo(cfg.url)) return createGitHubCodeSourceAdapter(cfg);
+    return createGitCodeSourceAdapter(cfg);
+  }
   return createStubCodeSourceAdapter();
 }

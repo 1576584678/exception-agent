@@ -173,14 +173,174 @@ export function createVictoriaLogsAdapter(): LogSourceAdapter {
   };
 }
 
+// ===== Elasticsearch 适配器（REST _search）=====
+// endpoint 可填 http://host:9200 或 http://host:9200/your-index；
+// indexWhitelist[0] 优先作为索引（如 logs-app-*）
+export function createElasticsearchAdapter(): LogSourceAdapter {
+  return {
+    name: 'elasticsearch',
+    async fetch(cfg, plan) {
+      const ep = (cfg.endpoint || '').replace(/\/+$/, '');
+      if (!ep) throw new Error('日志源未配置 endpoint');
+      const origin = ep.match(/^(https?:\/\/[^/]+)/i)?.[1];
+      if (!origin) throw new Error(`日志源地址不合法: ${ep}`);
+      const pathIndex = ep.slice(origin.length).replace(/^\/+/, '').replace(/\/_search$/, '');
+      const index = pathIndex || cfg.indexWhitelist?.[0] || '_all';
+      const timeField = cfg.timeField || '@timestamp';
+      const size = Math.min(plan.maxRows, cfg.maxReturn || 500, 500);
+      const keywords = plan.keywords.filter(Boolean);
+
+      const search = async (body: Record<string, unknown>) => {
+        const res = await fetch(`${origin}/${index}/_search`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(15000),
+        });
+        if (!res.ok) {
+          const detail = (await res.text()).slice(0, 200);
+          throw new Error(`Elasticsearch HTTP ${res.status}${detail ? `: ${detail}` : ''}`);
+        }
+        const data = (await res.json()) as {
+          hits?: { hits?: { _source?: Record<string, unknown>; _index?: string }[] };
+        };
+        return (data.hits?.hits ?? []).map((h) => ({ _index: h._index, ...(h._source ?? {}) }));
+      };
+
+      const range = { range: { [timeField]: { gte: plan.timeWindow.from, lte: plan.timeWindow.to } } };
+      // 主查询：关键词 query_string；0 条或异常时兜底 ERROR/WARN
+      let rows: Record<string, unknown>[] = [];
+      let usedFallback = false;
+      try {
+        rows = await search({
+          size,
+          sort: [{ [timeField]: { order: 'desc' } }],
+          query: { bool: { must: [range, ...(keywords.length
+            ? [{ query_string: { query: keywords.map((k) => k.replace(/[:"(){}[\]^~*!\\/-]/g, ' ').trim()).filter(Boolean).join(' OR ') } }]
+            : [])] } },
+        });
+      } catch {
+        usedFallback = true;
+      }
+      if (rows.length === 0) {
+        usedFallback = true;
+        rows = await search({
+          size,
+          sort: [{ [timeField]: { order: 'desc' } }],
+          query: { bool: { must: [range, { terms: { level: ['ERROR', 'WARN', 'error', 'warn'] } }] } },
+        }).catch(() => []);
+      }
+
+      const rank = (l: unknown) => (String(l ?? '').toUpperCase() === 'ERROR' ? 0 : String(l ?? '').toUpperCase() === 'WARN' ? 1 : 2);
+      rows.sort((a, b) => rank(a.level ?? a.severity) - rank(b.level ?? b.severity));
+      return rows.slice(0, size).map((row, i) => ({
+        id: `ev-${i}-${Math.random().toString(36).slice(2, 8)}`,
+        runId: '',
+        sourceType: 'log' as const,
+        rawPointer: `${origin}/${index}/_search`,
+        normalized: {
+          time: row[timeField] ?? row.timestamp ?? row.time,
+          level: String(row.level ?? row.severity ?? 'INFO').toUpperCase(),
+          service: row.service ?? row.service_name ?? row.app ?? row._index,
+          traceId: row.traceId ?? row.trace_id,
+          message: row.message ?? row.msg ?? '',
+          stack: row.stack ?? row.exception,
+        },
+        dedupCount: 1,
+      }));
+    },
+  };
+}
+
+// ===== Loki 适配器（/loki/api/v1/query_range，PromQL/LogQL）=====
+// endpoint 可填 http://host:3100 或 http://host:3100/loki（自动补全路径）
+export function createLokiAdapter(): LogSourceAdapter {
+  return {
+    name: 'loki',
+    async fetch(cfg, plan) {
+      const ep = (cfg.endpoint || '').replace(/\/+$/, '');
+      const origin = ep.match(/^(https?:\/\/[^/]+)/i)?.[1];
+      if (!origin) throw new Error(`日志源地址不合法: ${ep || '(空)'}`);
+      const api = /\/loki\/?$/i.test(ep) ? `${ep}/api/v1/query_range` : `${origin}/loki/api/v1/query_range`;
+      const limit = Math.min(plan.maxRows, cfg.maxReturn || 500, 500);
+      const start = String(new Date(plan.timeWindow.from).getTime() * 1e6);
+      const end = String(new Date(plan.timeWindow.to).getTime() * 1e6);
+      const keywords = plan.keywords.map((k) => k.replace(/[\\"]/g, '').trim()).filter(Boolean).slice(0, 3);
+
+      const query = async (q: string) => {
+        const params = new URLSearchParams({ query: q, start, end, limit: String(limit), direction: 'backward' });
+        const res = await fetch(`${api}?${params.toString()}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/x-www-form-urlencoded' },
+          body: params.toString(),
+          signal: AbortSignal.timeout(15000),
+        });
+        if (!res.ok) {
+          const detail = (await res.text()).slice(0, 200);
+          throw new Error(`Loki HTTP ${res.status}${detail ? `: ${detail}` : ''}`);
+        }
+        const data = (await res.json()) as { data?: { result?: { stream?: Record<string, string>; values?: [string, string][] }[] } };
+        return (data.data?.result ?? []).flatMap((s) =>
+          (s.values ?? []).map(([ts, line]) => ({ ts, line, labels: s.stream ?? {} })),
+        );
+      };
+
+      // 主查询：所有日志流 + 关键词正则过滤；失败或 0 条时兜底查 ERROR 级别样式日志
+      const selector = '{job=~".+"}';
+      let rows: { ts: string; line: string; labels: Record<string, string> }[] = [];
+      let usedFallback = false;
+      try {
+        rows = await query(keywords.length ? `${selector} |~ "${keywords.join('|')}"` : selector);
+      } catch {
+        usedFallback = true;
+      }
+      if (rows.length === 0) {
+        usedFallback = true;
+        rows = await query(`${selector} |~ "(?i)(ERROR|error)"`).catch(() => []);
+      }
+
+      // 行可能是 JSON 日志：提取结构化字段；否则整行为 message
+      const parseLine = (line: string): Record<string, unknown> => {
+        try { return JSON.parse(line) as Record<string, unknown>; } catch { return {}; }
+      };
+      const rank = (l: string) => (/ERROR/i.test(l) ? 0 : /WARN/i.test(l) ? 1 : 2);
+      rows.sort((a, b) => rank(a.line) - rank(b.line));
+      return rows.slice(0, limit).map((r, i) => {
+        const j = parseLine(r.line);
+        return {
+          id: `ev-${i}-${Math.random().toString(36).slice(2, 8)}`,
+          runId: '',
+          sourceType: 'log' as const,
+          rawPointer: `${api}?query=${encodeURIComponent(usedFallback ? 'ERROR' : keywords.join('|'))}`,
+          normalized: {
+            time: r.ts ? new Date(Number(r.ts) / 1e6).toISOString() : j.time ?? j.timestamp,
+            level: String(j.level ?? j.severity ?? (/ERROR/i.test(r.line) ? 'ERROR' : /WARN/i.test(r.line) ? 'WARN' : 'INFO')).toUpperCase(),
+            service: j.service ?? r.labels?.job ?? r.labels?.app,
+            traceId: j.traceId ?? j.trace_id,
+            message: String(j.message ?? j.msg ?? r.line),
+            stack: j.stack ?? j.exception,
+          },
+          dedupCount: 1,
+        };
+      });
+    },
+  };
+}
+
 // 选择器：
 // - endpoint 含 vmui / logsql → VictoriaLogs（vmui 为网页地址，自动纠正到 API）
+// - endpoint 含 loki 或 :3100 → Loki
+// - endpoint 含 elasticsearch / :9200 / _search，或 indexWhitelist 存在 → Elasticsearch
 // - 其他 http(s) → 通用 HTTP 日志 API
 // - 其余（internal://、空、目录路径）→ stub
 export function selectLogAdapter(cfg?: LogSource): LogSourceAdapter {
   const ep = cfg?.endpoint;
   if (ep && /^https?:\/\//i.test(ep)) {
     if (/vmui|logsql/i.test(ep)) return createVictoriaLogsAdapter();
+    if (/loki/i.test(ep) || /:3100(\/|$)/i.test(ep)) return createLokiAdapter();
+    if (/elasticsearch/i.test(ep) || /:9200(\/|$)/i.test(ep) || /_search/i.test(ep) || (cfg?.indexWhitelist?.length ?? 0) > 0) {
+      return createElasticsearchAdapter();
+    }
     return createHttpLogSourceAdapter();
   }
   return createStubLogSourceAdapter();

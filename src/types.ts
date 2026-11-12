@@ -133,7 +133,7 @@ export interface CodeLocation {
     message: string;
     commitUrl: string;
     isLastModifier: boolean;
-    note: 'blame 仅表示最后修改者，不代表责任人';
+    note: string; // 边界声明（如：blame 仅表示最后修改者，不代表责任人）；不同托管平台可有差异
   };
   commitSha: string;
   versionAligned: boolean;

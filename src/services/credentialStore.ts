@@ -60,8 +60,8 @@ function statusOf(value?: string): CredentialStatus {
 }
 
 /** 当前凭证状态（只含掩码，不含明文） */
-export function getCredentialStatus(): { llm: CredentialStatus; gitlab: CredentialStatus } {
-  return { llm: statusOf(config.LLM_API_KEY), gitlab: statusOf(config.GITLAB_TOKEN) };
+export function getCredentialStatus(): { llm: CredentialStatus; gitlab: CredentialStatus; github: CredentialStatus } {
+  return { llm: statusOf(config.LLM_API_KEY), gitlab: statusOf(config.GITLAB_TOKEN), github: statusOf(config.GITHUB_TOKEN) };
 }
 
 /** 保存模型 Key：落 .env + 立即更新运行时配置 */
@@ -77,5 +77,13 @@ export function saveGitLabToken(token: string): CredentialStatus {
   const t = token.trim();
   updateEnvFile('GITLAB_TOKEN', t);
   config.GITLAB_TOKEN = t;
+  return statusOf(t);
+}
+
+/** 保存 GitHub PAT（repo 只读） */
+export function saveGitHubToken(token: string): CredentialStatus {
+  const t = token.trim();
+  updateEnvFile('GITHUB_TOKEN', t);
+  config.GITHUB_TOKEN = t;
   return statusOf(t);
 }

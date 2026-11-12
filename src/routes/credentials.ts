@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { AuditService } from '../services/audit.js';
 import { BadRequestError } from '../errors.js';
 import { authenticate, requirePermission } from '../middleware/auth.js';
-import { getCredentialStatus, saveGitLabToken, saveLLMKey } from '../services/credentialStore.js';
+import { getCredentialStatus, saveGitHubToken, saveGitLabToken, saveLLMKey } from '../services/credentialStore.js';
 
 const secretSchema = z.object({
   value: z.string().trim().min(8, '密钥长度至少 8 位').max(500),
@@ -49,6 +49,24 @@ export async function credentialRoutes(app: FastifyInstance, audit: AuditService
         actor: req.user!.employeeId,
         action: 'gitlab_credential_updated',
         detail: 'GitLab 只读 token 已更新（值不记录）',
+      });
+      return status;
+    },
+  );
+
+  app.put(
+    '/credentials/github',
+    { preHandler: [authenticate, requirePermission('project:configure')] },
+    async (req) => {
+      const parsed = secretSchema.safeParse(req.body);
+      if (!parsed.success) {
+        throw new BadRequestError('INVALID_BODY', parsed.error.issues[0]?.message ?? 'Token 校验失败');
+      }
+      const status = saveGitHubToken(parsed.data.value);
+      await audit.record({
+        actor: req.user!.employeeId,
+        action: 'github_credential_updated',
+        detail: 'GitHub PAT 已更新（值不记录）',
       });
       return status;
     },

@@ -10,17 +10,38 @@
     --bg:#f4f6fb; --surface:#fff; --surface-2:#f8fafc; --border:#e6e9f0;
     --text:#0f172a; --muted:#64748b; --primary:#4f46e5; --primary-2:#6366f1;
     --primary-soft:#eef2ff; --success:#16a34a; --danger:#dc2626; --warn:#d97706;
+    --topbar-bg:rgba(255,255,255,.82);
+    --ok-bg:#dcfce7; --ok-bd:#bbf7d0; --ok-tx:#15803d;
+    --warn-bg:#fef3c7; --warn-bd:#fde68a; --warn-tx:#a16207;
+    --err-bg:#fee2e2; --err-bd:#fecaca; --err-tx:#b91c1c;
+    --danger-hover-bg:#fef2f2;
+    --code-bg:#f1f5f9;
     --radius:14px; --radius-sm:10px;
     --shadow-sm:0 1px 2px rgba(15,23,42,.06);
     --shadow-md:0 6px 20px rgba(15,23,42,.08);
     --shadow-lg:0 20px 60px rgba(15,23,42,.22);
     color-scheme: light;
   }
+  html.dark{
+    --bg:#0b1020; --surface:#151b2e; --surface-2:#1c2340; --border:#2a3352;
+    --text:#e2e8f0; --muted:#94a3b8; --primary:#818cf8; --primary-2:#6366f1;
+    --primary-soft:rgba(99,102,241,.16); --success:#34d399; --danger:#f87171; --warn:#fbbf24;
+    --topbar-bg:rgba(15,20,38,.85);
+    --ok-bg:rgba(22,101,52,.45); --ok-bd:rgba(34,197,94,.35); --ok-tx:#4ade80;
+    --warn-bg:rgba(120,53,15,.45); --warn-bd:rgba(245,158,11,.35); --warn-tx:#fbbf24;
+    --err-bg:rgba(127,29,29,.45); --err-bd:rgba(239,68,68,.35); --err-tx:#f87171;
+    --danger-hover-bg:rgba(127,29,29,.3);
+    --code-bg:#242b45;
+    --shadow-sm:0 1px 2px rgba(0,0,0,.4);
+    --shadow-md:0 6px 20px rgba(0,0,0,.45);
+    --shadow-lg:0 20px 60px rgba(0,0,0,.6);
+    color-scheme: dark;
+  }
   *{box-sizing:border-box}
   html,body{height:100%}
   body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
   button{font-family:inherit}
-  .topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:14px;height:60px;min-height:60px;padding:0 22px;background:rgba(255,255,255,.82);backdrop-filter:blur(10px);border-bottom:1px solid var(--border)}
+  .topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:14px;height:60px;min-height:60px;padding:0 22px;background:var(--topbar-bg);backdrop-filter:blur(10px);border-bottom:1px solid var(--border)}
   .brand{display:flex;align-items:center;gap:10px;flex-shrink:0;white-space:nowrap;user-select:none}
   .logo{width:32px;height:32px;flex:0 0 32px;border-radius:10px;box-shadow:0 2px 6px rgba(79,70,229,.28);display:block}
   .brand-text{display:flex;flex-direction:column;justify-content:center;line-height:1.2}
@@ -41,7 +62,7 @@
   .proj-menu button{display:block;width:100%;text-align:left;border:0;background:transparent;padding:9px 10px;border-radius:7px;font-size:13px;color:var(--text);cursor:pointer}
   .proj-menu button:hover{background:var(--surface-2)}
   .proj-menu button.danger{color:var(--danger)}
-  .proj-menu button.danger:hover{background:#fef2f2}
+  .proj-menu button.danger:hover{background:var(--danger-hover-bg)}
   .menu-sep{height:1px;background:var(--border);margin:5px 4px}
   .btn{border:0;border-radius:10px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;transition:.18s}
   .btn-ghost{background:var(--surface);border:1px solid var(--border);color:var(--text)}
@@ -55,7 +76,7 @@
   .hero p{margin:0 0 24px;color:var(--muted);font-size:14px;line-height:1.7;max-width:640px}
   .input-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm);padding:16px}
   textarea#desc{width:100%;border:0;outline:0;resize:vertical;min-height:120px;font-size:14px;line-height:1.7;color:var(--text);background:transparent}
-  textarea#desc::placeholder{color:#9aa4b2}
+  textarea#desc::placeholder{color:var(--muted);opacity:.65}
   .input-toolbar{display:flex;align-items:center;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
   .upload{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);background:var(--surface-2);border:1px solid var(--border);padding:8px 12px;border-radius:9px;cursor:pointer}
   .upload:hover{color:var(--text)}
@@ -68,19 +89,19 @@
   .rep-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-md);overflow:hidden}
   .rep-head{position:relative;padding:22px 24px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,var(--surface),var(--surface-2))}
   .rep-del{position:absolute;top:16px;right:16px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:12px;font-weight:600;padding:5px 12px;border-radius:8px;cursor:pointer;transition:.15s}
-  .rep-del:hover{color:var(--danger);border-color:#fecaca;background:#fef2f2}
-  .hist-del{border:0;background:transparent;color:#c0c8d4;font-size:15px;width:24px;height:24px;border-radius:6px;cursor:pointer;line-height:1;flex-shrink:0}
-  .hist-del:hover{color:var(--danger);background:#fef2f2}
+  .rep-del:hover{color:var(--danger);border-color:var(--err-bd);background:var(--danger-hover-bg)}
+  .hist-del{border:0;background:transparent;color:var(--muted);opacity:.7;font-size:15px;width:24px;height:24px;border-radius:6px;cursor:pointer;line-height:1;flex-shrink:0}
+  .hist-del:hover{color:var(--danger);background:var(--danger-hover-bg);opacity:1}
   .rep-concl{font-size:19px;font-weight:700;line-height:1.45;margin-bottom:12px;padding-right:100px}
   @media(max-width:560px){.rep-concl{font-size:16px;padding-right:64px}.rep-del{top:12px;right:12px;padding:4px 9px;font-size:11px}}
   .rep-badges{display:flex;flex-wrap:wrap;gap:8px}
   .badge{font-size:11.5px;font-weight:600;padding:3px 10px;border-radius:999px;background:var(--surface-2);border:1px solid var(--border);color:var(--muted)}
-  .badge.type{background:var(--primary-soft);border-color:#dcd8ff;color:var(--primary)}
-  .badge.high{background:#dcfce7;border-color:#bbf7d0;color:#15803d}
-  .badge.medium{background:#fef3c7;border-color:#fde68a;color:#a16207}
-  .badge.low{background:#fee2e2;border-color:#fecaca;color:#b91c1c}
-  .badge.partial{background:#fef3c7;border-color:#fde68a;color:#a16207}
-  .badge.done{background:#dcfce7;border-color:#bbf7d0;color:#15803d}
+  .badge.type{background:var(--primary-soft);border-color:var(--primary-2);color:var(--primary)}
+  .badge.high{background:var(--ok-bg);border-color:var(--ok-bd);color:var(--ok-tx)}
+  .badge.medium{background:var(--warn-bg);border-color:var(--warn-bd);color:var(--warn-tx)}
+  .badge.low{background:var(--err-bg);border-color:var(--err-bd);color:var(--err-tx)}
+  .badge.partial{background:var(--warn-bg);border-color:var(--warn-bd);color:var(--warn-tx)}
+  .badge.done{background:var(--ok-bg);border-color:var(--ok-bd);color:var(--ok-tx)}
   .rep-body{padding:8px 24px 24px}
   .rep-section{padding:16px 0;border-bottom:1px dashed var(--border)}
   .rep-section:last-child{border-bottom:0}
@@ -91,19 +112,19 @@
   .sec-toggle.open .chev{transform:rotate(90deg)}
   .sec-body{display:none;margin-top:2px}
   .sec-body.open{display:block}
-  .count-pill{font-size:10.5px;font-weight:700;color:var(--primary);background:var(--primary-soft);border:1px solid #dcd8ff;border-radius:999px;padding:1px 8px;text-transform:none;letter-spacing:0}
+  .count-pill{font-size:10.5px;font-weight:700;color:var(--primary);background:var(--primary-soft);border:1px solid var(--primary-2);border-radius:999px;padding:1px 8px;text-transform:none;letter-spacing:0}
   .more-btn{display:block;width:100%;margin-top:8px;padding:8px;border:1px dashed var(--border);border-radius:8px;background:var(--surface);color:var(--primary);font-size:12.5px;font-weight:600;cursor:pointer}
   .more-btn:hover{background:var(--primary-soft);border-color:var(--primary-2)}
   .ev-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
   .ev-list li{background:var(--surface-2);border:1px solid var(--border);border-left:3px solid var(--primary);border-radius:8px;padding:9px 12px;font-size:13px;line-height:1.6}
   .ev-list li.ev{cursor:pointer;transition:.15s}
-  .ev-list li.ev:hover{border-color:#c7cdf8}
+  .ev-list li.ev:hover{border-color:var(--primary-2)}
   .ev-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
-  .lv{font-size:10.5px;font-weight:800;padding:1px 7px;border-radius:5px;background:#f1f5f9;color:var(--muted)}
-  .lv.ERROR{background:#fee2e2;color:#b91c1c}
-  .lv.WARN{background:#fef3c7;color:#a16207}
+  .lv{font-size:10.5px;font-weight:800;padding:1px 7px;border-radius:5px;background:var(--code-bg);color:var(--muted)}
+  .lv.ERROR{background:var(--err-bg);color:var(--err-tx)}
+  .lv.WARN{background:var(--warn-bg);color:var(--warn-tx)}
   .lv.INFO{background:var(--primary-soft);color:var(--primary)}
-  .lv.code,.lv.blame,.lv.data{background:#ecfeff;color:#0e7490}
+  .lv.code,.lv.blame,.lv.data{background:rgba(14,116,144,.16);color:#22d3ee}
   .ev-time{font-size:11px;color:var(--muted);margin-left:auto}
   .ev-msg{font-size:12.5px;line-height:1.65;word-break:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap}
   .ev.expanded .ev-msg{display:block;-webkit-line-clamp:unset;overflow:visible}
@@ -132,11 +153,11 @@
   input.f:focus,select.f:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(79,70,229,.14)}
   .drawer-foot{padding:16px 20px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px}
   .drawer-foot .btn-primary{flex:1}
-  .key-state{font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:999px;background:#f1f5f9;color:var(--muted);border:1px solid var(--border);margin-left:4px}
-  .key-state.ok{background:#dcfce7;border-color:#bbf7d0;color:#15803d}
+  .key-state{font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:999px;background:var(--code-bg);color:var(--muted);border:1px solid var(--border);margin-left:4px}
+  .key-state.ok{background:var(--ok-bg);border-color:var(--ok-bd);color:var(--ok-tx)}
   .tag-global,.tag-proj{font-size:10px;font-weight:600;padding:1px 7px;border-radius:999px;margin-left:auto;letter-spacing:0}
-  .tag-global{background:#ecfeff;border:1px solid #a5f3fc;color:#0e7490}
-  .tag-proj{background:var(--primary-soft);border:1px solid #dcd8ff;color:var(--primary)}
+  .tag-global{background:rgba(14,116,144,.14);border:1px solid rgba(34,211,238,.4);color:#22d3ee}
+  .tag-proj{background:var(--primary-soft);border:1px solid var(--primary-2);color:var(--primary)}
   .danger-link{background:none;border:0;padding:0;font-size:12px;color:var(--muted);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
   .danger-link:hover{color:var(--danger)}
   .history{margin-top:34px}
@@ -169,11 +190,11 @@
   .stage-item{display:flex;align-items:center;gap:12px;padding:10px 2px;border-bottom:1px dashed var(--border)}
   .stage-item:last-child{border-bottom:0}
   .st-ic{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0}
-  .st-ic.pending{border:1.5px solid var(--border);color:#c0c8d4;background:transparent}
+  .st-ic.pending{border:1.5px solid var(--border);color:var(--muted);opacity:.6;background:transparent}
   .st-ic.running{border:0;color:var(--primary);background:var(--primary-soft)}
-  .st-ic.done{border:0;color:#15803d;background:#dcfce7}
-  .st-ic.failed{border:0;color:#b91c1c;background:#fee2e2}
-  .st-ic.skipped{border:1.5px dashed #cbd5e1;color:#94a3b8;background:transparent}
+  .st-ic.done{border:0;color:var(--ok-tx);background:var(--ok-bg)}
+  .st-ic.failed{border:0;color:var(--err-tx);background:var(--err-bg)}
+  .st-ic.skipped{border:1.5px dashed var(--border);color:var(--muted);background:transparent}
   .stage-name{font-size:13.5px;font-weight:600}
   .stage-item.running .stage-name{color:var(--primary)}
   .stage-name small{display:block;font-weight:400;font-size:11.5px;color:var(--muted);margin-top:1px}
@@ -211,6 +232,7 @@
     </div>
   </div>
   <div class="userchip" id="userchip"><span class="av">?</span><span id="userText">未登录</span></div>
+  <button class="btn btn-ghost icon-btn" id="themeBtn" onclick="toggleTheme()" title="切换深色 / 浅色">🌙</button>
   <button class="btn btn-ghost" id="openConfigBtn" onclick="openConfig()">配置</button>
 </header>
 
@@ -287,7 +309,7 @@
         <option value="objectstore">目录 / 对象存储</option>
       </select>
       <label class="f">地址 / 路径</label>
-      <input class="f" id="logEndpoint" placeholder="日志平台地址 或 目录路径" />
+      <input class="f" id="logEndpoint" placeholder="日志平台地址（自动识别 VictoriaLogs / ES / Loki）或目录路径" />
     </div>
     <div class="field-group">
       <div class="field-group-title"><span class="idx">3</span> 代码仓库 <span class="tag-proj curProjName">当前项目</span></div>
@@ -301,7 +323,7 @@
       <label class="f">分支</label>
       <input class="f" id="repoBranch" placeholder="默认 main（用于 blame / 文件读取）" />
       <label class="f">访问 Token <span class="key-state" id="gitTokenState">未配置</span></label>
-      <input class="f" id="gitToken" type="password" autocomplete="new-password" placeholder="GitLab read_api 只读 token（留空表示不修改）" />
+      <input class="f" id="gitToken" type="password" autocomplete="new-password" placeholder="GitLab read_api / GitHub PAT（按仓库地址自动区分，留空表示不修改）" />
     </div>
     <p class="muted" style="margin:4px 2px 0">密钥只写入服务端 <span class="mono">.env</span>，不落数据库、不回传明文，保存后立即生效。</p>
     <div style="margin-top:16px;padding-top:12px;border-top:1px dashed var(--border)">
@@ -349,6 +371,20 @@
 </div>
 
 <script>
+  // ===== 主题：手动切换（localStorage 记忆），首次访问跟随系统 =====
+  (function initTheme() {
+    const saved = localStorage.getItem('ei.theme');
+    const dark = saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    document.documentElement.classList.toggle('dark', dark);
+    const btn = document.getElementById('themeBtn');
+    if (btn) btn.textContent = dark ? '☀️' : '🌙';
+  })();
+  function toggleTheme() {
+    const dark = document.documentElement.classList.toggle('dark');
+    localStorage.setItem('ei.theme', dark ? 'dark' : 'light');
+    document.getElementById('themeBtn').textContent = dark ? '☀️' : '🌙';
+  }
+
   let PROJECT = localStorage.getItem('ei.project') || 'demo-project-1';
   let token = null;
   let imgData = null;
@@ -558,7 +594,21 @@
     try {
       const c = await api('/credentials');
       keyState('llmKeyState', c.llm);
-      keyState('gitTokenState', c.gitlab);
+      // Git 平台：GitLab 与 GitHub 状态合并展示（按当前仓库地址优先）
+      const isGH = /github\.com/i.test(val('repoUrl') || '');
+      const primary = isGH ? c.github : c.gitlab;
+      const other = isGH ? c.gitlab : c.github;
+      const el = $('gitTokenState');
+      if (primary && primary.configured) {
+        el.textContent = '已配置 ' + (isGH ? 'GitHub ' : 'GitLab ') + primary.masked;
+        el.className = 'key-state ok';
+      } else if (other && other.configured) {
+        el.textContent = '未配置（另一平台已配置 ' + (isGH ? 'GitLab' : 'GitHub') + '）';
+        el.className = 'key-state';
+      } else {
+        el.textContent = '未配置';
+        el.className = 'key-state';
+      }
     } catch (e) { /* 无权限时静默 */ }
   }
 
@@ -598,7 +648,8 @@
       }
       const tk = val('gitToken');
       if (tk) {
-        const st = await api('/credentials/gitlab', { method: 'PUT', body: JSON.stringify({ value: tk }) });
+        const isGH = val('repoType') === 'git' && /github\.com/i.test(val('repoUrl') || '');
+        const st = await api(isGH ? '/credentials/github' : '/credentials/gitlab', { method: 'PUT', body: JSON.stringify({ value: tk }) });
         keyState('gitTokenState', st); $('gitToken').value = '';
       }
       setMsg('cfgMsg', '已保存（大模型对所有项目生效，日志源/仓库仅当前项目）', true);

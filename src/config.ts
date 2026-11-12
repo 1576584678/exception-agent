@@ -15,6 +15,8 @@ const schema = z.object({
   LLM_MODEL: z.string().optional(),
   // GitLab 只读 token（env 注入，禁止入库；scope: read_api / read_repository）
   GITLAB_TOKEN: z.string().optional(),
+  // GitHub PAT（repo 只读，用于公共/私有仓库 blame 与提交追溯）
+  GITHUB_TOKEN: z.string().optional(),
   // 存储：memory 开发期默认；pg 为后续生产接入
   STORAGE: z.enum(['memory', 'pg']).default('memory'),
 });
